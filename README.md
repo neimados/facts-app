@@ -1,37 +1,51 @@
-High-Level Description: Create a mobile application called FactSwipe for both iOS and Android. It's a global knowledge app where users can discover interesting facts by swiping up and down, similar to TikTok. The app should be designed for a seamless, fast, and engaging user experience, with a strong focus on performance and offline capabilities. It will be free to use and require no user account.
+# FactSwipe
 
-DataFetching
-n8n workflow powered by AI.
-Browse wikipedia database and determine if the facts can be summarize in less than 30 words while being comprehensive. 
-Check for duplicates in the MySql database using wikidata uid.
-Insert uid, summarize and add category tag based on the article in the database.
+**Discover the world’s most fascinating facts with a swipe.**
 
-Core Features & Data Handling
-Fact Display:
-The main screen will display one fact at a time in full screen.
-Users navigate through facts by swiping vertically (up and down).
-Data Source:
-Facts are stored in an external MySQL database.
-The database has a table named knowledge_entries with the following columns: id (INT, Primary Key), summary, category.
-Algorithm:
-a random batch of facts are preloaded on the launch of the applications
-A batch of facts must avoid duplicate facts as much as possible.
-based on the time spent on each fact of the previous batch, the next batch of facts will be adjusted to contain facts from categories that interest the user the most.
+FactSwipe is a **React Native** mobile app for iOS and Android, delivering bite-sized, engaging facts in a seamless, TikTok-like swiping experience. Powered by **AI-driven data curation, auto-translation, and adaptive learning**, FactSwipe offers a minimalist, immersive experience—no accounts, no ads, just pure knowledge at your fingertips.
 
-Performance & User Experience
-Seamless Swiping:
-Implement a highly optimized preloading mechanism to ensure there is zero loading time between swipes.
-While the user is viewing the first half of the currently loaded facts, the app should start preloading the next batch in the background.
-To manage memory and maintain performance, the app should clear facts that have been viewed and are no longer in the immediate preload buffer (e.g., clear facts that are 10 swipes away).
-Automatic Advancement:
-If a user stays on a single fact for 30 seconds without any interaction, the app should automatically swipe to the next fact.
+---
 
-User Interface (UI)
-Backgrounds:
-The background of each fact slide should be a high-quality image corresponding to its category.
-Apply a randomly selected color filter (e.g., a semi-transparent overlay of blue, green, purple, etc.) on top of the background image for each new slide to create a dynamic and visually appealing effect. The transition between filters should be smooth.
-Text Display:
-The fact_text should be displayed in the center of the screen.
-Use a large, clean, and highly readable font with high contrast against the background (e.g., white text with a subtle drop shadow) to ensure legibility.
-Simplicity:
-The interface should be minimal. There are no buttons, menus, or complex navigation. The primary interaction is swiping.
+## 🌟 Why FactSwipe?
+
+FactSwipe is built for **speed, simplicity, and personalization**:
+- **AI-Powered Fact Curation**: Our backend uses an **n8n workflow** to scrape, analyze, and summarize Wikipedia articles into concise, engaging facts (under 30 words). Each fact is tagged by category and deduplicated using **Wikidata UIDs**.
+- **Auto-Translation**: Facts are **automatically translated** into the user’s preferred language using AI, with the option to switch languages on the fly.
+- **Adaptive Learning**: The app learns from user behavior, adjusting future fact batches based on **time spent per category** to keep content relevant and engaging.
+- **Offline-First**: Facts are preloaded in batches, ensuring **zero loading time** between swipes—even offline.
+
+---
+
+## 🚀 Core Features
+
+### 1. AI-Driven Data Pipeline
+- **Wikipedia Scraping**: Automatically fetches and processes articles.
+- **Summarization**: Uses AI to distill facts into **under 30 words** while retaining accuracy.
+- **Deduplication**: Ensures no repeated facts using **Wikidata UIDs**.
+- **Category Tagging**: Facts are categorized (e.g., Science, History, Tech) for personalized delivery.
+
+### 2. Smart Preloading Algorithm
+- **Batch Loading**: Facts are loaded in batches to eliminate delays.
+- **Interest-Based**: Adjusts content based on **user engagement metrics** (time spent per category).
+- **Memory Efficiency**: Clears old facts to optimize performance.
+
+### 3. Seamless User Experience
+- **Swipe Navigation**: Intuitive vertical swiping (up/down) to explore facts.
+- **Auto-Advance**: Moves to the next fact after **30 seconds of inactivity**.
+- **Minimalist UI**: No buttons, no clutter—just **high-contrast text** for maximum readability.
+
+### 4. Multi-Language Support
+- **Auto-Translation**: Facts are translated in real-time to the user’s device language.
+- **Language Switcher**: Users can manually select their preferred language.
+
+---
+
+## 🛠 Technical Stack
+
+| Area               | Technology Stack                          |
+|--------------------|-------------------------------------------|
+| **Frontend**       | React Native, Expo                        |
+| **Backend**        | MySQL (for fact storage)                  |
+| **AI/Automation**  | n8n (Wikipedia scraping, summarization, deduplication, translation) |
+| **Performance**    | Optimized preloading, memory management  |
+
