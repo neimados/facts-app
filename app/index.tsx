@@ -1,4 +1,4 @@
-// app/index.tsx - Main entry point for FactSwipe
+// app/index.tsx - Main entry point for FactSwipe with real API integration
 import * as React from 'react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
@@ -6,200 +6,97 @@ import {
   Text,
   Dimensions,
   StyleSheet,
-  ImageBackground,
   StatusBar,
   BackHandler,
   Animated,
 } from 'react-native';
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+
+import {
+  fetchFactsFromApi,
+  trackFactInteraction,
+  loadUserInterests,
+  UserInterests,
+  ALL_CATEGORIES
+} from '../services/FactServices';
 
 const { width, height } = Dimensions.get('window');
 
-// TypeScript interfaces
-interface Fact {
-  id: string | number;
-  summary: string;
-  category: string;
-}
-
-interface UserInterests {
-  [category: string]: number;
-}
-
-// Sample facts data - Replace with your MySQL API calls
-const SAMPLE_FACTS: Fact[] = [
-  { 
-    id: 1, 
-    summary: "Honey never spoils. Archaeologists have found pots of honey in ancient Egyptian tombs that are over 3,000 years old and still perfectly edible.", 
-    category: "science" 
-  },
-  { 
-    id: 2, 
-    summary: "A group of flamingos is called a 'flamboyance'. This colorful name perfectly matches their vibrant appearance and social behavior.", 
-    category: "animals" 
-  },
-  { 
-    id: 3, 
-    summary: "The human brain contains approximately 86 billion neurons, each connecting to thousands of others, creating a network more complex than any computer.", 
-    category: "science" 
-  },
-  { 
-    id: 4, 
-    summary: "Bananas are berries, but strawberries aren't. Botanically speaking, berries must have seeds inside their flesh, which bananas do but strawberries don't.", 
-    category: "nature" 
-  },
-  { 
-    id: 5, 
-    summary: "The shortest war in history lasted only 38-45 minutes. It was between Britain and Zanzibar in 1896.", 
-    category: "history" 
-  },
-  { 
-    id: 6, 
-    summary: "Octopuses have three hearts and blue blood. Two hearts pump blood to the gills, while the third pumps blood to the rest of the body.", 
-    category: "animals" 
-  },
-  { 
-    id: 7, 
-    summary: "A single cloud can weigh more than a million pounds, yet it floats in the sky due to the density difference with surrounding air.", 
-    category: "science" 
-  },
-  { 
-    id: 8, 
-    summary: "Dolphins have names for each other. They develop signature whistles that function like names in human society.", 
-    category: "animals" 
-  },
-];
-
 // Category color schemes for dynamic overlays
 const CATEGORY_COLORS: { [key: string]: string[] } = {
+  technology: ['rgba(70,130,180,0.75)', 'rgba(100,149,237,0.75)', 'rgba(30,144,255,0.75)'],
   science: ['rgba(64, 123, 255, 0.75)', 'rgba(30, 144, 255, 0.75)', 'rgba(0, 191, 255, 0.75)'],
-  animals: ['rgba(255, 99, 71, 0.75)', 'rgba(255, 140, 0, 0.75)', 'rgba(255, 69, 0, 0.75)'],
-  nature: ['rgba(34, 139, 34, 0.75)', 'rgba(60, 179, 113, 0.75)', 'rgba(46, 125, 50, 0.75)'],
   history: ['rgba(138, 43, 226, 0.75)', 'rgba(147, 112, 219, 0.75)', 'rgba(123, 104, 238, 0.75)'],
-  default: ['rgba(105, 105, 105, 0.75)', 'rgba(119, 136, 153, 0.75)', 'rgba(112, 128, 144, 0.75)']
+  geography: ['rgba(34,139,34,0.75)', 'rgba(107,142,35,0.75)', 'rgba(60,179,113,0.75)'],
+  arts: ['rgba(199,21,133,0.75)', 'rgba(219,112,147,0.75)', 'rgba(255,105,180,0.75)'],
+  sports: ['rgba(255,165,0,0.75)', 'rgba(255,140,0,0.75)', 'rgba(255,99,71,0.75)'],
+  politics: ['rgba(178,34,34,0.75)', 'rgba(220,20,60,0.75)', 'rgba(139,0,0,0.75)'],
+  medicine: ['rgba(46,139,87,0.75)', 'rgba(60,179,113,0.75)', 'rgba(32,178,170,0.75)'],
+  environment: ['rgba(34,139,34,0.75)', 'rgba(0,128,0,0.75)', 'rgba(46,125,50,0.75)'],
+  other: ['rgba(105,105,105,0.75)', 'rgba(119,136,153,0.75)', 'rgba(112,128,144,0.75)'],
+  default: ['rgba(105,105,105,0.75)', 'rgba(119,136,153,0.75)', 'rgba(112,128,144,0.75)']
 };
 
-// Default background gradients (since we can't use require() with dynamic images in Expo Router)
+// Default background gradients
 const CATEGORY_GRADIENTS: { [key: string]: string[] } = {
+  technology: ['#1e3c72', '#2a5298'],
   science: ['#1e3c72', '#2a5298'],
-  animals: ['#ff7e5f', '#feb47b'],
-  nature: ['#56ab2f', '#a8e6cf'],
   history: ['#667db6', '#0082c8'],
+  geography: ['#56ab2f', '#a8e6cf'],
+  arts: ['#ff7e5f', '#feb47b'],
+  sports: ['#f7971e', '#ffd200'],
+  politics: ['#b92b27', '#1565C0'],
+  medicine: ['#43cea2', '#185a9d'],
+  environment: ['#11998e', '#38ef7d'],
+  other: ['#434343', '#000000'],
   default: ['#434343', '#000000']
 };
 
 const FactSwipeApp: React.FC = () => {
-  // State management
   const [currentFactIndex, setCurrentFactIndex] = useState<number>(0);
-  const [facts, setFacts] = useState<Fact[]>(SAMPLE_FACTS);
+  const [facts, setFacts] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [userInterestData, setUserInterestData] = useState<UserInterests>({});
   const [currentColorOverlay, setCurrentColorOverlay] = useState<string>('');
 
-  // Refs for animations and timers
   const translateY = useRef(new Animated.Value(0)).current;
   const autoAdvanceTimer = useRef<NodeJS.Timeout | null>(null);
   const viewStartTime = useRef<number>(Date.now());
   const gestureRef = useRef(null);
 
-  // Simulate API call to fetch facts from MySQL database
-  const fetchFactsFromDatabase = useCallback(async (interests: UserInterests = {}, batchSize: number = 20): Promise<Fact[]> => {
-    setIsLoading(true);
-    try {
-      // Simulate network delay
-      await new Promise(resolve => setTimeout(resolve, 800));
-      
-      // In production, this would be a real API call
-      // const response = await fetch('your-api-endpoint/facts', { ... });
-      
-      // Simulate personalized fact selection based on interests
-      const availableCategories = Object.keys(CATEGORY_COLORS);
-      const newFacts: Fact[] = [];
-      
-      for (let i = 0; i < batchSize; i++) {
-        // Select category based on user interests or random
-        let selectedCategory: string;
-        if (Object.keys(interests).length > 0) {
-          const categoryWeights = Object.entries(interests);
-          const randomValue = Math.random();
-          let cumulativeWeight = 0;
-          selectedCategory = categoryWeights[0][0]; // fallback
-          
-          for (const [category, weight] of categoryWeights) {
-            cumulativeWeight += weight;
-            if (randomValue <= cumulativeWeight) {
-              selectedCategory = category;
-              break;
-            }
-          }
-        } else {
-          selectedCategory = availableCategories[Math.floor(Math.random() * availableCategories.length)];
-        }
-        
-        // Create a new fact (in production, this comes from database)
-        const baseFact = SAMPLE_FACTS.find(f => f.category === selectedCategory) || SAMPLE_FACTS[0];
-        newFacts.push({
-          ...baseFact,
-          id: `${baseFact.id}_${Date.now()}_${i}`, // Unique ID to avoid duplicates
-        });
-      }
-      
-      return newFacts;
-    } catch (error) {
-      console.error('Error fetching facts:', error);
-      return SAMPLE_FACTS.slice(); // Return sample data as fallback
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  // Track user interaction time for personalization
-  const trackFactInteraction = useCallback((factId: string | number, category: string, timeSpent: number) => {
-    setUserInterestData(prev => {
-      const currentTime = prev[category] || 0;
-      const normalizedTime = Math.min(timeSpent, 60000) / 1000; // Cap at 60 seconds, convert to seconds
-      const interestScore = Math.log(normalizedTime + 1); // Logarithmic scale
-      
-      return {
-        ...prev,
-        [category]: currentTime + interestScore
-      };
-    });
-
-    // Store interaction data for persistence
-    AsyncStorage.setItem(`interaction_${factId}`, JSON.stringify({
-      category,
-      timeSpent,
-      timestamp: Date.now()
-    })).catch(console.error);
-  }, []);
-
-  // Auto-advance timer management
+  // Auto-advance timer
   const resetAutoAdvanceTimer = useCallback(() => {
-    if (autoAdvanceTimer.current) {
-      clearTimeout(autoAdvanceTimer.current);
-    }
-    
+    if (autoAdvanceTimer.current) clearTimeout(autoAdvanceTimer.current);
     autoAdvanceTimer.current = setTimeout(() => {
       handleNextFact();
-    }, 30000); // 30 seconds
+    }, 30000);
   }, []);
 
-  // Handle navigation to next fact
+  // Load initial facts
+  useEffect(() => {
+    (async () => {
+      setIsLoading(true);
+      const interests = await loadUserInterests();
+      setUserInterestData(interests);
+      const initialFacts = await fetchFactsFromApi(interests, ALL_CATEGORIES, 15);
+      setFacts(initialFacts);
+      setIsLoading(false);
+    })();
+  }, []);
+
+  // Handle next fact
   const handleNextFact = useCallback(async () => {
     const currentFact = facts[currentFactIndex];
     const timeSpent = Date.now() - viewStartTime.current;
-    
-    // Track interaction before moving
-    if (currentFact && timeSpent > 1000) { // Only track if viewed for more than 1 second
-      trackFactInteraction(currentFact.id, currentFact.category, timeSpent);
+
+    if (currentFact && timeSpent > 1000) {
+      const updated = await trackFactInteraction(currentFact.id, currentFact.category, timeSpent, "view");
+      if (updated) setUserInterestData(updated);
     }
 
-    // Check if we need to load more facts
     if (currentFactIndex >= facts.length - 1) {
-      const newFacts = await fetchFactsFromDatabase(userInterestData);
+      const newFacts = await fetchFactsFromApi(userInterestData, ALL_CATEGORIES, 10);
       if (newFacts.length > 0) {
         setFacts(prev => [...prev, ...newFacts]);
         setCurrentFactIndex(currentFactIndex + 1);
@@ -207,12 +104,12 @@ const FactSwipeApp: React.FC = () => {
     } else {
       setCurrentFactIndex(currentFactIndex + 1);
     }
-    
+
     viewStartTime.current = Date.now();
     resetAutoAdvanceTimer();
-  }, [currentFactIndex, facts, userInterestData, trackFactInteraction, fetchFactsFromDatabase, resetAutoAdvanceTimer]);
+  }, [currentFactIndex, facts, userInterestData, resetAutoAdvanceTimer]);
 
-  // Handle navigation to previous fact
+  // Handle previous fact
   const handlePreviousFact = useCallback(() => {
     if (currentFactIndex > 0) {
       setCurrentFactIndex(currentFactIndex - 1);
@@ -221,7 +118,7 @@ const FactSwipeApp: React.FC = () => {
     }
   }, [currentFactIndex, resetAutoAdvanceTimer]);
 
-  // Gesture handler for vertical swipes
+  // Gesture handler
   const onGestureEvent = Animated.event(
     [{ nativeEvent: { translationY: translateY } }],
     { useNativeDriver: true }
@@ -229,23 +126,17 @@ const FactSwipeApp: React.FC = () => {
 
   const onHandlerStateChange = useCallback((event: any) => {
     const { nativeEvent } = event;
-    
     if (nativeEvent.state === State.END) {
       const { translationY, velocityY } = nativeEvent;
-      
-      // Determine swipe direction and threshold
       const swipeThreshold = 80;
       const velocityThreshold = 800;
-      
+
       if (translationY < -swipeThreshold || velocityY < -velocityThreshold) {
-        // Swipe up - next fact
         handleNextFact();
       } else if (translationY > swipeThreshold || velocityY > velocityThreshold) {
-        // Swipe down - previous fact
         handlePreviousFact();
       }
-      
-      // Reset animation with spring effect
+
       Animated.spring(translateY, {
         toValue: 0,
         tension: 100,
@@ -255,39 +146,15 @@ const FactSwipeApp: React.FC = () => {
     }
   }, [handleNextFact, handlePreviousFact, translateY]);
 
-  // Initialize auto-advance timer
+  // Auto-advance setup
   useEffect(() => {
     resetAutoAdvanceTimer();
     return () => {
-      if (autoAdvanceTimer.current) {
-        clearTimeout(autoAdvanceTimer.current);
-      }
+      if (autoAdvanceTimer.current) clearTimeout(autoAdvanceTimer.current);
     };
   }, [resetAutoAdvanceTimer]);
 
-  // Preload next batch when halfway through current facts
-  useEffect(() => {
-    const preloadThreshold = Math.floor(facts.length * 0.6);
-    if (currentFactIndex >= preloadThreshold && !isLoading) {
-      fetchFactsFromDatabase(userInterestData).then(newFacts => {
-        if (newFacts.length > 0) {
-          setFacts(prev => [...prev, ...newFacts]);
-        }
-      });
-    }
-  }, [currentFactIndex, facts.length, isLoading, userInterestData, fetchFactsFromDatabase]);
-
-  // Memory management - clear old facts to prevent memory bloat
-  useEffect(() => {
-    const bufferSize = 10;
-    if (currentFactIndex > bufferSize && facts.length > bufferSize * 2) {
-      const factsToKeep = facts.slice(currentFactIndex - bufferSize);
-      setFacts(factsToKeep);
-      setCurrentFactIndex(bufferSize);
-    }
-  }, [currentFactIndex, facts]);
-
-  // Update color overlay when fact changes
+  // Update overlay on fact change
   useEffect(() => {
     const currentFact = facts[currentFactIndex];
     if (currentFact) {
@@ -297,42 +164,21 @@ const FactSwipeApp: React.FC = () => {
     }
   }, [currentFactIndex, facts]);
 
-  // Handle Android back button
+  // Android back button
   useEffect(() => {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
       if (currentFactIndex > 0) {
         handlePreviousFact();
-        return true; // Prevent default back action
+        return true;
       }
-      return false; // Allow default back action (exit app)
+      return false;
     });
-
     return () => backHandler.remove();
   }, [currentFactIndex, handlePreviousFact]);
 
-  // Load user interests from storage on app start
-  useEffect(() => {
-    AsyncStorage.getItem('userInterests')
-      .then(data => {
-        if (data) {
-          setUserInterestData(JSON.parse(data));
-        }
-      })
-      .catch(console.error);
-  }, []);
-
-  // Save user interests to storage when they change
-  useEffect(() => {
-    if (Object.keys(userInterestData).length > 0) {
-      AsyncStorage.setItem('userInterests', JSON.stringify(userInterestData))
-        .catch(console.error);
-    }
-  }, [userInterestData]);
-
   const currentFact = facts[currentFactIndex];
-  
-  // Loading screen
-  if (!currentFact) {
+
+  if (!currentFact || isLoading) {
     return (
       <View style={styles.loadingContainer}>
         <Text style={styles.loadingText}>Loading amazing facts...</Text>
@@ -341,7 +187,6 @@ const FactSwipeApp: React.FC = () => {
     );
   }
 
-  // Get gradient colors for current category
   const gradientColors = CATEGORY_GRADIENTS[currentFact.category] || CATEGORY_GRADIENTS.default;
 
   return (
@@ -367,9 +212,7 @@ const FactSwipeApp: React.FC = () => {
             }
           ]}
         >
-          <View style={[styles.backgroundGradient, { 
-            backgroundColor: gradientColors[0] 
-          }]}>
+          <View style={[styles.backgroundGradient, { backgroundColor: gradientColors[0] }]}>
             <View style={[styles.overlay, { backgroundColor: currentColorOverlay }]}>
               <SafeAreaView style={styles.safeArea}>
                 {/* Category indicator */}
@@ -396,7 +239,6 @@ const FactSwipeApp: React.FC = () => {
                   />
                 </View>
 
-                {/* Navigation hints (only show for first few facts) */}
                 {currentFactIndex < 3 && (
                   <View style={styles.hintsContainer}>
                     <Text style={styles.hintText}>↑ Swipe up for next fact</Text>
@@ -413,32 +255,11 @@ const FactSwipeApp: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  backgroundGradient: {
-    flex: 1,
-    width: width,
-    height: height,
-  },
-  overlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  safeArea: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-  },
-  factContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 30,
-    paddingVertical: 40,
-  },
+  container: { flex: 1 },
+  backgroundGradient: { flex: 1, width, height },
+  overlay: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  safeArea: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 },
+  factContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 30, paddingVertical: 40 },
   factText: {
     fontSize: 26,
     fontWeight: '600',
@@ -459,12 +280,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 20,
   },
-  categoryText: {
-    color: 'white',
-    fontSize: 13,
-    fontWeight: 'bold',
-    letterSpacing: 1.2,
-  },
+  categoryText: { color: 'white', fontSize: 13, fontWeight: 'bold', letterSpacing: 1.2 },
   progressContainer: {
     position: 'absolute',
     bottom: 50,
@@ -483,13 +299,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.8,
     shadowRadius: 4,
   },
-  hintsContainer: {
-    position: 'absolute',
-    bottom: 100,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-  },
+  hintsContainer: { position: 'absolute', bottom: 100, left: 0, right: 0, alignItems: 'center' },
   hintText: {
     color: 'rgba(255, 255, 255, 0.7)',
     fontSize: 14,
@@ -499,25 +309,9 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 2,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#1a1a2e',
-    paddingHorizontal: 40,
-  },
-  loadingText: {
-    color: 'white',
-    fontSize: 24,
-    fontWeight: '600',
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  loadingSubtext: {
-    color: 'rgba(255, 255, 255, 0.7)',
-    fontSize: 16,
-    textAlign: 'center',
-  },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#1a1a2e', paddingHorizontal: 40 },
+  loadingText: { color: 'white', fontSize: 24, fontWeight: '600', textAlign: 'center', marginBottom: 16 },
+  loadingSubtext: { color: 'rgba(255, 255, 255, 0.7)', fontSize: 16, textAlign: 'center' },
 });
 
 export default FactSwipeApp;

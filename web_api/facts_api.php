@@ -29,17 +29,17 @@ if (!preg_match(CATEGORY_PATTERN, $category)) {
 }
 
 // Rate limiting
-session_start();
-$currentTime = time();
-if (isset($_SESSION['last_request_time'])) {
-    $timeSinceLastRequest = $currentTime - $_SESSION['last_request_time'];
-    if ($timeSinceLastRequest < REQUEST_RATE_LIMIT) {
-        http_response_code(429);
-        echo json_encode(["error" => "Too many requests. Please wait a moment."]);
-        exit;
-    }
-}
-$_SESSION['last_request_time'] = $currentTime;
+// session_start();
+// $currentTime = time();
+// if (isset($_SESSION['last_request_time'])) {
+//     $timeSinceLastRequest = $currentTime - $_SESSION['last_request_time'];
+//     if ($timeSinceLastRequest < REQUEST_RATE_LIMIT) {
+//         http_response_code(429);
+//         echo json_encode(["error" => "Too many requests. Please wait a moment."]);
+//         exit;
+//     }
+// }
+// $_SESSION['last_request_time'] = $currentTime;
 
 try {
     // Create PDO connection with port specification
