@@ -24,18 +24,25 @@ import {
 const { width, height } = Dimensions.get('window');
 
 // Category color schemes for dynamic overlays
+function getRandomColor(): string {
+  const r = Math.floor(Math.random() * 256);
+  const g = Math.floor(Math.random() * 256);
+  const b = Math.floor(Math.random() * 256);
+  return `rgba(${r},${g},${b},0.75)`;
+}
+
 const CATEGORY_COLORS: { [key: string]: string[] } = {
-  technology: ['rgba(70,130,180,0.75)', 'rgba(100,149,237,0.75)', 'rgba(30,144,255,0.75)'],
-  science: ['rgba(64, 123, 255, 0.75)', 'rgba(30, 144, 255, 0.75)', 'rgba(0, 191, 255, 0.75)'],
-  history: ['rgba(138, 43, 226, 0.75)', 'rgba(147, 112, 219, 0.75)', 'rgba(123, 104, 238, 0.75)'],
-  geography: ['rgba(34,139,34,0.75)', 'rgba(107,142,35,0.75)', 'rgba(60,179,113,0.75)'],
-  arts: ['rgba(199,21,133,0.75)', 'rgba(219,112,147,0.75)', 'rgba(255,105,180,0.75)'],
-  sports: ['rgba(255,165,0,0.75)', 'rgba(255,140,0,0.75)', 'rgba(255,99,71,0.75)'],
-  politics: ['rgba(178,34,34,0.75)', 'rgba(220,20,60,0.75)', 'rgba(139,0,0,0.75)'],
-  medicine: ['rgba(46,139,87,0.75)', 'rgba(60,179,113,0.75)', 'rgba(32,178,170,0.75)'],
-  environment: ['rgba(34,139,34,0.75)', 'rgba(0,128,0,0.75)', 'rgba(46,125,50,0.75)'],
-  other: ['rgba(105,105,105,0.75)', 'rgba(119,136,153,0.75)', 'rgba(112,128,144,0.75)'],
-  default: ['rgba(105,105,105,0.75)', 'rgba(119,136,153,0.75)', 'rgba(112,128,144,0.75)']
+  technology: [getRandomColor(), getRandomColor(), getRandomColor()],
+  science: [getRandomColor(), getRandomColor(), getRandomColor()],
+  history: [getRandomColor(), getRandomColor(), getRandomColor()],
+  geography: [getRandomColor(), getRandomColor(), getRandomColor()],
+  arts: [getRandomColor(), getRandomColor(), getRandomColor()],
+  sports: [getRandomColor(), getRandomColor(), getRandomColor()],
+  politics: [getRandomColor(), getRandomColor(), getRandomColor()],
+  medicine: [getRandomColor(), getRandomColor(), getRandomColor()],
+  environment: [getRandomColor(), getRandomColor(), getRandomColor()],
+  other: [getRandomColor(), getRandomColor(), getRandomColor()],
+  default: [getRandomColor(), getRandomColor(), getRandomColor()]
 };
 
 // Default background gradients
