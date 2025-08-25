@@ -1,4 +1,4 @@
-// app/index.tsx - Main entry point for FactSwipe with real API integration
+// app/index.tsx - Main entry point for FactSwipe with translation features
 import * as React from 'react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
@@ -9,9 +9,14 @@ import {
   StatusBar,
   BackHandler,
   Animated,
+  TouchableOpacity,
+  ActivityIndicator,
+  Modal, // NEW: Using Modal for the language picker
+  Pressable, // NEW: To close the modal
 } from 'react-native';
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import * as Localization from 'expo-localization';
 
 import {
   fetchFactsFromApi,
@@ -20,6 +25,52 @@ import {
   UserInterests,
   ALL_CATEGORIES
 } from '../services/FactServices';
+
+// --- NEW: Translation Service (can be moved to a separate file e.g., services/TranslationService.ts) ---
+
+// IMPORTANT: Replace this with your actual DeepL API key
+const DEEPL_API_KEY = 'API KEY';
+const DEEPL_API_URL = 'https://api-free.deepl.com/v2/translate';
+
+// Supported languages for the switcher
+const SUPPORTED_LANGUAGES = ['EN', 'ES', 'FR', 'DE', 'ZH']; // English, Spanish, French, German, Chinese
+
+/**
+ * Translates text using the DeepL API.
+ * @param text The text to translate.
+ * @param targetLang The target language code (e.g., 'FR', 'ES').
+ * @returns The translated text or null if an error occurs.
+ */
+const translateText = async (text: string, targetLang: string): Promise<string | null> => {
+  if (targetLang.toUpperCase() === 'EN') {
+    return text;
+  }
+
+  try {
+    const response = await fetch(DEEPL_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `DeepL-Auth-Key ${DEEPL_API_KEY}`,
+      },
+      body: JSON.stringify({
+        text: [text],
+        target_lang: targetLang,
+      }),
+    });
+
+    const data = await response.json();
+    if (data.translations && data.translations.length > 0) {
+      return data.translations[0].text;
+    }
+    return text; // Return original text on failure
+  } catch (error) {
+    console.error('DeepL Translation Error:', error);
+    return text; // Return original text on error
+  }
+};
+
+// --- End of Translation Service ---
 
 const { width, height } = Dimensions.get('window');
 
@@ -67,10 +118,49 @@ const FactSwipeApp: React.FC = () => {
   const [userInterestData, setUserInterestData] = useState<UserInterests>({});
   const [currentColorOverlay, setCurrentColorOverlay] = useState<string>('');
 
+  // State for translation
+  const [language, setLanguage] = useState<string>('EN');
+  const [translatedSummary, setTranslatedSummary] = useState<string>('');
+  const [isTranslating, setIsTranslating] = useState<boolean>(false);
+  // NEW: State to control the visibility of the language dropdown
+  const [isLanguagePickerVisible, setLanguagePickerVisible] = useState(false);
+
   const translateY = useRef(new Animated.Value(0)).current;
-  const autoAdvanceTimer = useRef<NodeJS.Timeout | null>(null);
+  const autoAdvanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const viewStartTime = useRef<number>(Date.now());
   const gestureRef = useRef(null);
+
+  // Auto-detect language on initial load
+  useEffect(() => {
+    const userLocales = Localization.getLocales();
+    if (userLocales && userLocales.length > 0) {
+      const detectedLanguageCode = userLocales[0].languageCode?.toUpperCase();
+      if (detectedLanguageCode && SUPPORTED_LANGUAGES.includes(detectedLanguageCode)) {
+        setLanguage(detectedLanguageCode);
+      }
+    }
+  }, []);
+
+  // Effect to translate the fact when the language or fact changes
+  useEffect(() => {
+    const translateCurrentFact = async () => {
+      const currentFact = facts[currentFactIndex];
+      if (!currentFact) return;
+
+      setIsTranslating(true);
+      const translated = await translateText(currentFact.summary, language);
+      setTranslatedSummary(translated || currentFact.summary);
+      setIsTranslating(false);
+    };
+
+    translateCurrentFact();
+  }, [currentFactIndex, facts, language]);
+
+  // NEW: Handler to select a language from the dropdown
+  const handleSelectLanguage = (selectedLanguage: string) => {
+    setLanguage(selectedLanguage);
+    setLanguagePickerVisible(false);
+  };
 
   // Auto-advance timer
   const resetAutoAdvanceTimer = useCallback(() => {
@@ -229,11 +319,20 @@ const FactSwipeApp: React.FC = () => {
                   </Text>
                 </View>
 
+                {/* UPDATED: Language Switcher Button - now opens the modal */}
+                <TouchableOpacity onPress={() => setLanguagePickerVisible(true)} style={styles.languageSwitcher}>
+                  <Text style={styles.languageSwitcherText}>{language} ▾</Text>
+                </TouchableOpacity>
+
                 {/* Main fact content */}
                 <View style={styles.factContainer}>
-                  <Text style={styles.factText}>
-                    {currentFact.summary}
-                  </Text>
+                  {isTranslating ? (
+                    <ActivityIndicator size="large" color="#ffffff" />
+                  ) : (
+                    <Text style={styles.factText}>
+                      {translatedSummary}
+                    </Text>
+                  )}
                 </View>
                 
                 {/* Progress indicator */}
@@ -257,6 +356,28 @@ const FactSwipeApp: React.FC = () => {
           </View>
         </Animated.View>
       </PanGestureHandler>
+
+      {/* NEW: Language Picker Modal */}
+      <Modal
+        transparent={true}
+        visible={isLanguagePickerVisible}
+        animationType="fade"
+        onRequestClose={() => setLanguagePickerVisible(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setLanguagePickerVisible(false)}>
+          <View style={styles.languagePickerContainer}>
+            {SUPPORTED_LANGUAGES.map((lang) => (
+              <TouchableOpacity
+                key={lang}
+                style={styles.languageOption}
+                onPress={() => handleSelectLanguage(lang)}
+              >
+                <Text style={styles.languageOptionText}>{lang}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </Pressable>
+      </Modal>
     </SafeAreaProvider>
   );
 };
@@ -288,6 +409,23 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
   categoryText: { color: 'white', fontSize: 13, fontWeight: 'bold', letterSpacing: 1.2 },
+  languageSwitcher: {
+    position: 'absolute',
+    top: 60,
+    left: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    minWidth: 60,
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  languageSwitcherText: {
+    color: 'white',
+    fontSize: 13,
+    fontWeight: 'bold',
+  },
   progressContainer: {
     position: 'absolute',
     bottom: 50,
@@ -319,6 +457,34 @@ const styles = StyleSheet.create({
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#1a1a2e', paddingHorizontal: 40 },
   loadingText: { color: 'white', fontSize: 24, fontWeight: '600', textAlign: 'center', marginBottom: 16 },
   loadingSubtext: { color: 'rgba(255, 255, 255, 0.7)', fontSize: 16, textAlign: 'center' },
+  
+  // NEW: Styles for the language picker modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+  },
+  languagePickerContainer: {
+    position: 'absolute',
+    top: 105, // Positioned below the switcher button
+    left: 20,
+    backgroundColor: 'rgba(40, 40, 40, 0.95)',
+    borderRadius: 12,
+    padding: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    elevation: 8,
+  },
+  languageOption: {
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+  },
+  languageOptionText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '500',
+  },
 });
 
 export default FactSwipeApp;
