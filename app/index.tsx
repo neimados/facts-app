@@ -11,12 +11,14 @@ import {
   Animated,
   TouchableOpacity,
   ActivityIndicator,
-  Modal, // NEW: Using Modal for the language picker
-  Pressable, // NEW: To close the modal
+  Modal,
+  Pressable,
+  ImageBackground,
 } from 'react-native';
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import * as Localization from 'expo-localization';
+import { Asset } from 'expo-asset';
 
 import {
   fetchFactsFromApi,
@@ -26,26 +28,13 @@ import {
   ALL_CATEGORIES
 } from '../services/FactServices';
 
-// --- NEW: Translation Service (can be moved to a separate file e.g., services/TranslationService.ts) ---
+// --- Translation Service ---
 
-// IMPORTANT: Replace this with your actual DeepL API key
 const DEEPL_API_KEY = 'API KEY';
 const DEEPL_API_URL = 'https://api-free.deepl.com/v2/translate';
+const SUPPORTED_LANGUAGES = ['EN', 'ES', 'FR', 'DE', 'ZH'];
 
-// Supported languages for the switcher
-const SUPPORTED_LANGUAGES = ['EN', 'ES', 'FR', 'DE', 'ZH']; // English, Spanish, French, German, Chinese
-
-/**
- * Translates text using the DeepL API.
- * @param text The text to translate.
- * @param targetLang The target language code (e.g., 'FR', 'ES').
- * @returns The translated text or null if an error occurs.
- */
 const translateText = async (text: string, targetLang: string): Promise<string | null> => {
-  if (targetLang.toUpperCase() === 'EN') {
-    return text;
-  }
-
   try {
     const response = await fetch(DEEPL_API_URL, {
       method: 'POST',
@@ -53,20 +42,13 @@ const translateText = async (text: string, targetLang: string): Promise<string |
         'Content-Type': 'application/json',
         'Authorization': `DeepL-Auth-Key ${DEEPL_API_KEY}`,
       },
-      body: JSON.stringify({
-        text: [text],
-        target_lang: targetLang,
-      }),
+      body: JSON.stringify({ text: [text], target_lang: targetLang }),
     });
-
     const data = await response.json();
-    if (data.translations && data.translations.length > 0) {
-      return data.translations[0].text;
-    }
-    return text; // Return original text on failure
+    return data.translations?.[0]?.text || text;
   } catch (error) {
     console.error('DeepL Translation Error:', error);
-    return text; // Return original text on error
+    return text;
   }
 };
 
@@ -74,12 +56,40 @@ const translateText = async (text: string, targetLang: string): Promise<string |
 
 const { width, height } = Dimensions.get('window');
 
-// Category color schemes for dynamic overlays
 function getRandomColor(): string {
   const r = Math.floor(Math.random() * 256);
   const g = Math.floor(Math.random() * 256);
   const b = Math.floor(Math.random() * 256);
   return `rgba(${r},${g},${b},0.75)`;
+}
+
+const CATEGORY_BACKGROUNDS = {
+  technology: require('../assets/images/technology.png'),
+  science: require('../assets/images/science.png'),
+  history: require('../assets/images/history.png'),
+  geography: require('../assets/images/geography.png'),
+  arts: require('../assets/images/arts.png'),
+  sports: require('../assets/images/sports.png'),
+  politics: require('../assets/images/politics.png'),
+  medicine: require('../assets/images/medicine.png'),
+  environment: require('../assets/images/environment.png'),
+  other: require('../assets/images/other.png'),
+  default: require('../assets/images/default.png')
+};
+
+type Category = keyof typeof CATEGORY_BACKGROUNDS;
+
+// Define the structure of a Fact object
+interface Fact {
+  id: number | string;
+  summary: string;
+  // UPDATED: Category is now a string to match the service response
+  category: string;
+}
+
+// NEW: Type guard to check if a string is a valid category key
+function isValidCategory(category: string): category is Category {
+  return Object.keys(CATEGORY_BACKGROUNDS).includes(category);
 }
 
 const CATEGORY_COLORS: { [key: string]: string[] } = {
@@ -96,33 +106,20 @@ const CATEGORY_COLORS: { [key: string]: string[] } = {
   default: [getRandomColor(), getRandomColor(), getRandomColor()]
 };
 
-// Default background gradients
-const CATEGORY_GRADIENTS: { [key: string]: string[] } = {
-  technology: ['#1e3c72', '#2a5298'],
-  science: ['#1e3c72', '#2a5298'],
-  history: ['#667db6', '#0082c8'],
-  geography: ['#56ab2f', '#a8e6cf'],
-  arts: ['#ff7e5f', '#feb47b'],
-  sports: ['#f7971e', '#ffd200'],
-  politics: ['#b92b27', '#1565C0'],
-  medicine: ['#43cea2', '#185a9d'],
-  environment: ['#11998e', '#38ef7d'],
-  other: ['#434343', '#000000'],
-  default: ['#434343', '#000000']
-};
 
 const FactSwipeApp: React.FC = () => {
   const [currentFactIndex, setCurrentFactIndex] = useState<number>(0);
-  const [facts, setFacts] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [facts, setFacts] = useState<Fact[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [userInterestData, setUserInterestData] = useState<UserInterests>({});
   const [currentColorOverlay, setCurrentColorOverlay] = useState<string>('');
+  
+  const [areImagesPreloaded, setAreImagesPreloaded] = useState(false);
 
   // State for translation
   const [language, setLanguage] = useState<string>('EN');
   const [translatedSummary, setTranslatedSummary] = useState<string>('');
   const [isTranslating, setIsTranslating] = useState<boolean>(false);
-  // NEW: State to control the visibility of the language dropdown
   const [isLanguagePickerVisible, setLanguagePickerVisible] = useState(false);
 
   const translateY = useRef(new Animated.Value(0)).current;
@@ -130,10 +127,20 @@ const FactSwipeApp: React.FC = () => {
   const viewStartTime = useRef<number>(Date.now());
   const gestureRef = useRef(null);
 
+  // Preload images on app start
+  useEffect(() => {
+    const preloadAssets = async () => {
+      const imageUrls = Object.values(CATEGORY_BACKGROUNDS);
+      await Asset.loadAsync(imageUrls);
+      setAreImagesPreloaded(true);
+    };
+    preloadAssets();
+  }, []);
+
   // Auto-detect language on initial load
   useEffect(() => {
     const userLocales = Localization.getLocales();
-    if (userLocales && userLocales.length > 0) {
+    if (userLocales.length > 0) {
       const detectedLanguageCode = userLocales[0].languageCode?.toUpperCase();
       if (detectedLanguageCode && SUPPORTED_LANGUAGES.includes(detectedLanguageCode)) {
         setLanguage(detectedLanguageCode);
@@ -156,18 +163,14 @@ const FactSwipeApp: React.FC = () => {
     translateCurrentFact();
   }, [currentFactIndex, facts, language]);
 
-  // NEW: Handler to select a language from the dropdown
   const handleSelectLanguage = (selectedLanguage: string) => {
     setLanguage(selectedLanguage);
     setLanguagePickerVisible(false);
   };
 
-  // Auto-advance timer
   const resetAutoAdvanceTimer = useCallback(() => {
     if (autoAdvanceTimer.current) clearTimeout(autoAdvanceTimer.current);
-    autoAdvanceTimer.current = setTimeout(() => {
-      handleNextFact();
-    }, 30000);
+    autoAdvanceTimer.current = setTimeout(() => handleNextFact(), 30000);
   }, []);
 
   // Load initial facts
@@ -176,24 +179,24 @@ const FactSwipeApp: React.FC = () => {
       setIsLoading(true);
       const interests = await loadUserInterests();
       setUserInterestData(interests);
-      const initialFacts = await fetchFactsFromApi(interests, ALL_CATEGORIES, 15);
+      const initialFacts: Fact[] = await fetchFactsFromApi(interests, ALL_CATEGORIES, 15);
       setFacts(initialFacts);
       setIsLoading(false);
     })();
   }, []);
 
-  // Handle next fact
   const handleNextFact = useCallback(async () => {
     const currentFact = facts[currentFactIndex];
     const timeSpent = Date.now() - viewStartTime.current;
 
     if (currentFact && timeSpent > 1000) {
-      const updated = await trackFactInteraction(currentFact.id, currentFact.category, timeSpent, "view");
+      const categoryToTrack = isValidCategory(currentFact.category) ? currentFact.category : 'default';
+      const updated = await trackFactInteraction(currentFact.id, categoryToTrack, timeSpent, "view");
       if (updated) setUserInterestData(updated);
     }
 
     if (currentFactIndex >= facts.length - 1) {
-      const newFacts = await fetchFactsFromApi(userInterestData, ALL_CATEGORIES, 10);
+      const newFacts: Fact[] = await fetchFactsFromApi(userInterestData, ALL_CATEGORIES, 10);
       if (newFacts.length > 0) {
         setFacts(prev => [...prev, ...newFacts]);
         setCurrentFactIndex(currentFactIndex + 1);
@@ -206,7 +209,6 @@ const FactSwipeApp: React.FC = () => {
     resetAutoAdvanceTimer();
   }, [currentFactIndex, facts, userInterestData, resetAutoAdvanceTimer]);
 
-  // Handle previous fact
   const handlePreviousFact = useCallback(() => {
     if (currentFactIndex > 0) {
       setCurrentFactIndex(currentFactIndex - 1);
@@ -215,7 +217,6 @@ const FactSwipeApp: React.FC = () => {
     }
   }, [currentFactIndex, resetAutoAdvanceTimer]);
 
-  // Gesture handler
   const onGestureEvent = Animated.event(
     [{ nativeEvent: { translationY: translateY } }],
     { useNativeDriver: true }
@@ -243,7 +244,6 @@ const FactSwipeApp: React.FC = () => {
     }
   }, [handleNextFact, handlePreviousFact, translateY]);
 
-  // Auto-advance setup
   useEffect(() => {
     resetAutoAdvanceTimer();
     return () => {
@@ -251,17 +251,16 @@ const FactSwipeApp: React.FC = () => {
     };
   }, [resetAutoAdvanceTimer]);
 
-  // Update overlay on fact change
   useEffect(() => {
     const currentFact = facts[currentFactIndex];
     if (currentFact) {
-      const categoryColors = CATEGORY_COLORS[currentFact.category] || CATEGORY_COLORS.default;
+      const categoryKey = isValidCategory(currentFact.category) ? currentFact.category : 'default';
+      const categoryColors = CATEGORY_COLORS[categoryKey];
       const randomColor = categoryColors[Math.floor(Math.random() * categoryColors.length)];
       setCurrentColorOverlay(randomColor);
     }
   }, [currentFactIndex, facts]);
 
-  // Android back button
   useEffect(() => {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
       if (currentFactIndex > 0) {
@@ -275,7 +274,7 @@ const FactSwipeApp: React.FC = () => {
 
   const currentFact = facts[currentFactIndex];
 
-  if (!currentFact || isLoading) {
+  if (!currentFact || isLoading || !areImagesPreloaded) {
     return (
       <View style={styles.loadingContainer}>
         <Text style={styles.loadingText}>Loading amazing facts...</Text>
@@ -284,7 +283,8 @@ const FactSwipeApp: React.FC = () => {
     );
   }
 
-  const gradientColors = CATEGORY_GRADIENTS[currentFact.category] || CATEGORY_GRADIENTS.default;
+  const categoryKey = isValidCategory(currentFact.category) ? currentFact.category : 'default';
+  const backgroundImageSource = CATEGORY_BACKGROUNDS[categoryKey];
 
   return (
     <SafeAreaProvider>
@@ -309,33 +309,35 @@ const FactSwipeApp: React.FC = () => {
             }
           ]}
         >
-          <View style={[styles.backgroundGradient, { backgroundColor: gradientColors[0] }]}>
+          <ImageBackground
+            source={backgroundImageSource}
+            style={styles.backgroundImage}
+            resizeMode="cover"
+          >
             <View style={[styles.overlay, { backgroundColor: currentColorOverlay }]}>
               <SafeAreaView style={styles.safeArea}>
-                {/* Category indicator */}
                 <View style={styles.categoryIndicator}>
                   <Text style={styles.categoryText}>
                     {currentFact.category.toUpperCase()}
                   </Text>
                 </View>
 
-                {/* UPDATED: Language Switcher Button - now opens the modal */}
                 <TouchableOpacity onPress={() => setLanguagePickerVisible(true)} style={styles.languageSwitcher}>
                   <Text style={styles.languageSwitcherText}>{language} ▾</Text>
                 </TouchableOpacity>
 
-                {/* Main fact content */}
                 <View style={styles.factContainer}>
                   {isTranslating ? (
                     <ActivityIndicator size="large" color="#ffffff" />
                   ) : (
-                    <Text style={styles.factText}>
-                      {translatedSummary}
-                    </Text>
+                    <View style={styles.textBackground}>
+                      <Text style={styles.factText}>
+                        {translatedSummary}
+                      </Text>
+                    </View>
                   )}
                 </View>
                 
-                {/* Progress indicator */}
                 <View style={styles.progressContainer}>
                   <View 
                     style={[
@@ -353,11 +355,10 @@ const FactSwipeApp: React.FC = () => {
                 )}
               </SafeAreaView>
             </View>
-          </View>
+          </ImageBackground>
         </Animated.View>
       </PanGestureHandler>
 
-      {/* NEW: Language Picker Modal */}
       <Modal
         transparent={true}
         visible={isLanguagePickerVisible}
@@ -384,21 +385,42 @@ const FactSwipeApp: React.FC = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  backgroundGradient: { flex: 1, width, height },
-  overlay: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  backgroundImage: { flex: 1, width, height },
+  overlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)' },
   safeArea: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 },
-  factContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 30, paddingVertical: 40 },
-  factText: {
-    fontSize: 26,
-    fontWeight: '600',
-    color: 'white',
-    textAlign: 'center',
-    lineHeight: 38,
-    textShadowColor: 'rgba(0, 0, 0, 0.9)',
-    textShadowOffset: { width: 2, height: 2 },
-    textShadowRadius: 4,
-    letterSpacing: 0.3,
-  },
+  factContainer: {
+  flex: 1,
+  justifyContent: 'center',
+  alignItems: 'center',
+  paddingHorizontal: 30,
+  paddingVertical: 40,
+  // Remove backgroundColor from here
+},
+
+textBackground: {
+  backgroundColor: 'rgba(0, 0, 0, 0.4)', // Semi-transparent background
+  paddingHorizontal: 20,
+  paddingVertical: 15,
+  borderRadius: 12, // Rounded corners for better look
+  // Optional: add some styling
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.25,
+  shadowRadius: 4,
+  elevation: 5, // For Android shadow
+},
+
+factText: {
+  fontSize: 28,
+  fontWeight: '700',
+  color: 'white',
+  textAlign: 'center',
+  lineHeight: 40,
+  textShadowColor: 'rgba(0, 0, 0, 0.9)',
+  textShadowOffset: { width: 2, height: 2 },
+  textShadowRadius: 6,
+  letterSpacing: 0.3,
+},
   categoryIndicator: {
     position: 'absolute',
     top: 60,
@@ -458,14 +480,13 @@ const styles = StyleSheet.create({
   loadingText: { color: 'white', fontSize: 24, fontWeight: '600', textAlign: 'center', marginBottom: 16 },
   loadingSubtext: { color: 'rgba(255, 255, 255, 0.7)', fontSize: 16, textAlign: 'center' },
   
-  // NEW: Styles for the language picker modal
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.3)',
   },
   languagePickerContainer: {
     position: 'absolute',
-    top: 105, // Positioned below the switcher button
+    top: 105,
     left: 20,
     backgroundColor: 'rgba(40, 40, 40, 0.95)',
     borderRadius: 12,

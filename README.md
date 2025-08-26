@@ -48,6 +48,6 @@ FactSwipe is built for **speed, simplicity, and personalization**:
 | **Backend**        | MySQL (for fact storage)                  |
 | **AI/Automation**  | n8n (Wikipedia scraping, summarization, deduplication, translation) |
 |                    | ChatGPT API 5 Nano                       |
-|                    | Google Cloud Translation API             |
+|                    | DeepL Translation API                    |
 | **Performance**    | Optimized preloading, memory management  |
 
