@@ -24,7 +24,7 @@ export const ALL_CATEGORIES: string[] = [
   "Other"
 ];
 
-const API_URL = "https://www.lexiquedumanagement.com/facts/facts_api.php";
+const API_URL = "API URL";
 
 // --- Helpers ---
 function normalizeCategory(category: string): string {

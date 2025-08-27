@@ -19,6 +19,8 @@ import { PanGestureHandler, State } from 'react-native-gesture-handler';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import * as Localization from 'expo-localization';
 import { Asset } from 'expo-asset';
+import { Audio } from 'expo-av';
+import { Ionicons } from '@expo/vector-icons'; // Make sure to install @expo/vector-icons
 
 import {
   fetchFactsFromApi,
@@ -33,6 +35,14 @@ import {
 const DEEPL_API_KEY = 'API KEY';
 const DEEPL_API_URL = 'https://api-free.deepl.com/v2/translate';
 const SUPPORTED_LANGUAGES = ['EN', 'ES', 'FR', 'DE', 'ZH'];
+
+const LANGUAGE_FLAGS: { [key: string]: string } = {
+  EN: '🇬🇧', // Using Union Jack for English, could also be 🇺🇸
+  ES: '🇪🇸',
+  FR: '🇫🇷',
+  DE: '🇩🇪',
+  ZH: '🇨🇳',
+};
 
 const translateText = async (text: string, targetLang: string): Promise<string | null> => {
   try {
@@ -126,6 +136,55 @@ const FactSwipeApp: React.FC = () => {
   const autoAdvanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const viewStartTime = useRef<number>(Date.now());
   const gestureRef = useRef(null);
+
+  // State for sound
+  const [sound, setSound] = useState<Audio.Sound | null>(null);
+  const [isMuted, setIsMuted] = useState<boolean>(false);
+
+  // --- Sound Handling ---
+  useEffect(() => {
+    const loadSound = async () => {
+      // Configure audio session for playback
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+        staysActiveInBackground: true,
+      });
+
+      console.log('Loading Sound');
+      // I'm assuming your sound file is named 'ambiance.mp3'
+      // Please change the filename if it's different.
+      const { sound } = await Audio.Sound.createAsync(
+         require('../assets/sounds/ambiance.mp3'),
+         { isLooping: true }
+      );
+      setSound(sound);
+
+      console.log('Playing Sound');
+      await sound.playAsync();
+    };
+
+    loadSound();
+
+    // Cleanup function to unload the sound when the component is unmounted
+    return () => {
+      if (sound) {
+        console.log('Unloading Sound');
+        sound.unloadAsync();
+      }
+    };
+  }, []); // Empty dependency array ensures this runs only once on mount
+
+  const handleToggleMute = async () => {
+    if (sound) {
+      const newMuteState = !isMuted;
+      await sound.setIsMutedAsync(newMuteState);
+      setIsMuted(newMuteState);
+    }
+  };
+  // --- End of Sound Handling ---
 
   // Preload images on app start
   useEffect(() => {
@@ -326,6 +385,14 @@ const FactSwipeApp: React.FC = () => {
                   <Text style={styles.languageSwitcherText}>{language} ▾</Text>
                 </TouchableOpacity>
 
+                <TouchableOpacity onPress={handleToggleMute} style={styles.muteButton}>
+                  <Ionicons 
+                    name={isMuted ? "volume-mute" : "volume-high"} 
+                    size={24} 
+                    color="white" 
+                  />
+                </TouchableOpacity>
+
                 <View style={styles.factContainer}>
                   {isTranslating ? (
                     <ActivityIndicator size="large" color="#ffffff" />
@@ -336,15 +403,6 @@ const FactSwipeApp: React.FC = () => {
                       </Text>
                     </View>
                   )}
-                </View>
-                
-                <View style={styles.progressContainer}>
-                  <View 
-                    style={[
-                      styles.progressBar, 
-                      { width: `${((currentFactIndex + 1) / facts.length) * 100}%` }
-                    ]} 
-                  />
                 </View>
 
                 {currentFactIndex < 3 && (
@@ -373,6 +431,7 @@ const FactSwipeApp: React.FC = () => {
                 style={styles.languageOption}
                 onPress={() => handleSelectLanguage(lang)}
               >
+                <Text style={styles.languageFlagText}>{LANGUAGE_FLAGS[lang]}</Text>
                 <Text style={styles.languageOptionText}>{lang}</Text>
               </TouchableOpacity>
             ))}
@@ -448,24 +507,6 @@ factText: {
     fontSize: 13,
     fontWeight: 'bold',
   },
-  progressContainer: {
-    position: 'absolute',
-    bottom: 50,
-    left: 20,
-    right: 20,
-    height: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-    borderRadius: 2,
-  },
-  progressBar: {
-    height: '100%',
-    backgroundColor: 'white',
-    borderRadius: 2,
-    shadowColor: 'white',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 4,
-  },
   hintsContainer: { position: 'absolute', bottom: 100, left: 0, right: 0, alignItems: 'center' },
   hintText: {
     color: 'rgba(255, 255, 255, 0.7)',
@@ -484,13 +525,23 @@ factText: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.3)',
   },
+  muteButton: {
+    position: 'absolute',
+    bottom: 40,
+    right: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    padding: 12,
+    borderRadius: 30,
+    zIndex: 10,
+  },
   languagePickerContainer: {
     position: 'absolute',
-    top: 105,
+    top: 120, // Adjusted position to be below the new circular button
     left: 20,
     backgroundColor: 'rgba(40, 40, 40, 0.95)',
     borderRadius: 12,
-    padding: 5,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
@@ -498,8 +549,14 @@ factText: {
     elevation: 8,
   },
   languageOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingVertical: 12,
-    paddingHorizontal: 20,
+    paddingHorizontal: 10,
+  },
+  languageFlagText: {
+    fontSize: 22,
+    marginRight: 12,
   },
   languageOptionText: {
     color: 'white',
