@@ -1,34 +1,36 @@
-// app/index.tsx - Main entry point for FactSwipe with translation features
+// app/index.tsx - Main entry point for FactSwipe with updated audio handling
 import * as React from 'react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
-  Text,
   Dimensions,
   StyleSheet,
   StatusBar,
   BackHandler,
   Animated,
-  TouchableOpacity,
-  ActivityIndicator,
-  Modal,
-  Pressable,
   ImageBackground,
+  Share,
 } from 'react-native';
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
-import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Localization from 'expo-localization';
 import { Asset } from 'expo-asset';
-import { Audio } from 'expo-av';
-import { Ionicons } from '@expo/vector-icons'; // Make sure to install @expo/vector-icons
+// Replace Expo AV with Expo Audio
+import { useAudioPlayer, AudioSource } from 'expo-audio';
 
 import {
   fetchFactsFromApi,
   trackFactInteraction,
   loadUserInterests,
   UserInterests,
-  ALL_CATEGORIES
+  ALL_CATEGORIES,
+  Fact, // Make sure to export the Fact interface from FactServices
 } from '../services/FactServices';
+
+// Import your new components
+import { LoadingScreen } from '../components/LoadingScreen';
+import { FactCard } from '../components/FactCard';
+import { LanguagePickerModal } from '../components/LanguagePickerModal';
 
 // --- Translation Service ---
 
@@ -37,7 +39,7 @@ const DEEPL_API_URL = 'https://api-free.deepl.com/v2/translate';
 const SUPPORTED_LANGUAGES = ['EN', 'ES', 'FR', 'DE', 'ZH'];
 
 const LANGUAGE_FLAGS: { [key: string]: string } = {
-  EN: '🇬🇧', // Using Union Jack for English, could also be 🇺🇸
+  EN: '🇬🇧',
   ES: '🇪🇸',
   FR: '🇫🇷',
   DE: '🇩🇪',
@@ -64,7 +66,7 @@ const translateText = async (text: string, targetLang: string): Promise<string |
 
 // --- End of Translation Service ---
 
-const { width, height } = Dimensions.get('window');
+const { height } = Dimensions.get('window');
 
 function getRandomColor(): string {
   const r = Math.floor(Math.random() * 256);
@@ -89,15 +91,6 @@ const CATEGORY_BACKGROUNDS = {
 
 type Category = keyof typeof CATEGORY_BACKGROUNDS;
 
-// Define the structure of a Fact object
-interface Fact {
-  id: number | string;
-  summary: string;
-  // UPDATED: Category is now a string to match the service response
-  category: string;
-}
-
-// NEW: Type guard to check if a string is a valid category key
 function isValidCategory(category: string): category is Category {
   return Object.keys(CATEGORY_BACKGROUNDS).includes(category);
 }
@@ -116,75 +109,59 @@ const CATEGORY_COLORS: { [key: string]: string[] } = {
   default: [getRandomColor(), getRandomColor(), getRandomColor()]
 };
 
-
 const FactSwipeApp: React.FC = () => {
   const [currentFactIndex, setCurrentFactIndex] = useState<number>(0);
   const [facts, setFacts] = useState<Fact[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [userInterestData, setUserInterestData] = useState<UserInterests>({});
   const [currentColorOverlay, setCurrentColorOverlay] = useState<string>('');
-  
   const [areImagesPreloaded, setAreImagesPreloaded] = useState(false);
-
-  // State for translation
   const [language, setLanguage] = useState<string>('EN');
   const [translatedSummary, setTranslatedSummary] = useState<string>('');
   const [isTranslating, setIsTranslating] = useState<boolean>(false);
   const [isLanguagePickerVisible, setLanguagePickerVisible] = useState(false);
+  const [isMuted, setIsMuted] = useState<boolean>(false);
 
   const translateY = useRef(new Animated.Value(0)).current;
   const autoAdvanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const viewStartTime = useRef<number>(Date.now());
   const gestureRef = useRef(null);
 
-  // State for sound
-  const [sound, setSound] = useState<Audio.Sound | null>(null);
-  const [isMuted, setIsMuted] = useState<boolean>(false);
+  // Replace old Audio.Sound with new useAudioPlayer hook
+  const audioSource: AudioSource = require('../assets/sounds/ambiance.mp3');
+  const player = useAudioPlayer(audioSource);
 
-  // --- Sound Handling ---
+  // --- Updated Sound Handling with Expo Audio ---
   useEffect(() => {
-    const loadSound = async () => {
-      // Configure audio session for playback
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        playsInSilentModeIOS: true,
-        shouldDuckAndroid: true,
-        playThroughEarpieceAndroid: false,
-        staysActiveInBackground: true,
-      });
-
-      console.log('Loading Sound');
-      // I'm assuming your sound file is named 'ambiance.mp3'
-      // Please change the filename if it's different.
-      const { sound } = await Audio.Sound.createAsync(
-         require('../assets/sounds/ambiance.mp3'),
-         { isLooping: true }
-      );
-      setSound(sound);
-
-      console.log('Playing Sound');
-      await sound.playAsync();
-    };
-
-    loadSound();
-
-    // Cleanup function to unload the sound when the component is unmounted
-    return () => {
-      if (sound) {
-        console.log('Unloading Sound');
-        sound.unloadAsync();
+    const setupAudio = async () => {
+      try {
+        // Set the player to loop
+        player.loop = true;
+        // Start playing the audio
+        player.play();
+      } catch (error) {
+        console.error('Error setting up audio:', error);
       }
     };
-  }, []); // Empty dependency array ensures this runs only once on mount
+
+    setupAudio();
+
+    // Cleanup is handled automatically by the hook
+  }, [player]);
 
   const handleToggleMute = async () => {
-    if (sound) {
-      const newMuteState = !isMuted;
-      await sound.setIsMutedAsync(newMuteState);
-      setIsMuted(newMuteState);
+    try {
+      if (isMuted) {
+        player.play();
+        setIsMuted(false);
+      } else {
+        player.pause();
+        setIsMuted(true);
+      }
+    } catch (error) {
+      console.error('Error toggling mute:', error);
     }
   };
-  // --- End of Sound Handling ---
 
   // Preload images on app start
   useEffect(() => {
@@ -218,7 +195,6 @@ const FactSwipeApp: React.FC = () => {
       setTranslatedSummary(translated || currentFact.summary);
       setIsTranslating(false);
     };
-
     translateCurrentFact();
   }, [currentFactIndex, facts, language]);
 
@@ -247,13 +223,11 @@ const FactSwipeApp: React.FC = () => {
   const handleNextFact = useCallback(async () => {
     const currentFact = facts[currentFactIndex];
     const timeSpent = Date.now() - viewStartTime.current;
-
     if (currentFact && timeSpent > 1000) {
       const categoryToTrack = isValidCategory(currentFact.category) ? currentFact.category : 'default';
       const updated = await trackFactInteraction(currentFact.id, categoryToTrack, timeSpent, "view");
       if (updated) setUserInterestData(updated);
     }
-
     if (currentFactIndex >= facts.length - 1) {
       const newFacts: Fact[] = await fetchFactsFromApi(userInterestData, ALL_CATEGORIES, 10);
       if (newFacts.length > 0) {
@@ -263,7 +237,6 @@ const FactSwipeApp: React.FC = () => {
     } else {
       setCurrentFactIndex(currentFactIndex + 1);
     }
-
     viewStartTime.current = Date.now();
     resetAutoAdvanceTimer();
   }, [currentFactIndex, facts, userInterestData, resetAutoAdvanceTimer]);
@@ -276,6 +249,20 @@ const FactSwipeApp: React.FC = () => {
     }
   }, [currentFactIndex, resetAutoAdvanceTimer]);
 
+  const handleShareFact = async () => {
+    const currentFact = facts[currentFactIndex];
+    if (!currentFact) return;
+
+    try {
+      await Share.share({
+        message: `FactSwipe Discovery:\n\n"${translatedSummary}"`, // Use the translated text
+        title: `A fact about ${currentFact.category}`, // Optional: for Android
+      });
+    } catch (error) {
+      console.error('Error sharing fact:', error);
+    }
+  };
+
   const onGestureEvent = Animated.event(
     [{ nativeEvent: { translationY: translateY } }],
     { useNativeDriver: true }
@@ -287,13 +274,11 @@ const FactSwipeApp: React.FC = () => {
       const { translationY, velocityY } = nativeEvent;
       const swipeThreshold = 80;
       const velocityThreshold = 800;
-
       if (translationY < -swipeThreshold || velocityY < -velocityThreshold) {
         handleNextFact();
       } else if (translationY > swipeThreshold || velocityY > velocityThreshold) {
         handlePreviousFact();
       }
-
       Animated.spring(translateY, {
         toValue: 0,
         tension: 100,
@@ -333,13 +318,8 @@ const FactSwipeApp: React.FC = () => {
 
   const currentFact = facts[currentFactIndex];
 
-  if (!currentFact || isLoading || !areImagesPreloaded) {
-    return (
-      <View style={styles.loadingContainer}>
-        <Text style={styles.loadingText}>Loading amazing facts...</Text>
-        <Text style={styles.loadingSubtext}>Swipe up and down to navigate</Text>
-      </View>
-    );
+  if (isLoading || !currentFact || !areImagesPreloaded) {
+    return <LoadingScreen />;
   }
 
   const categoryKey = isValidCategory(currentFact.category) ? currentFact.category : 'default';
@@ -374,195 +354,37 @@ const FactSwipeApp: React.FC = () => {
             resizeMode="cover"
           >
             <View style={[styles.overlay, { backgroundColor: currentColorOverlay }]}>
-              <SafeAreaView style={styles.safeArea}>
-                <View style={styles.categoryIndicator}>
-                  <Text style={styles.categoryText}>
-                    {currentFact.category.toUpperCase()}
-                  </Text>
-                </View>
-
-                <TouchableOpacity onPress={() => setLanguagePickerVisible(true)} style={styles.languageSwitcher}>
-                  <Text style={styles.languageSwitcherText}>{language} ▾</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity onPress={handleToggleMute} style={styles.muteButton}>
-                  <Ionicons 
-                    name={isMuted ? "volume-mute" : "volume-high"} 
-                    size={24} 
-                    color="white" 
-                  />
-                </TouchableOpacity>
-
-                <View style={styles.factContainer}>
-                  {isTranslating ? (
-                    <ActivityIndicator size="large" color="#ffffff" />
-                  ) : (
-                    <View style={styles.textBackground}>
-                      <Text style={styles.factText}>
-                        {translatedSummary}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-
-                {currentFactIndex < 3 && (
-                  <View style={styles.hintsContainer}>
-                    <Text style={styles.hintText}>↑ Swipe up for next fact</Text>
-                    <Text style={styles.hintText}>↓ Swipe down for previous fact</Text>
-                  </View>
-                )}
-              </SafeAreaView>
+              <FactCard
+                fact={currentFact}
+                translatedSummary={translatedSummary}
+                isTranslating={isTranslating}
+                language={language}
+                isMuted={isMuted}
+                showHints={currentFactIndex < 3}
+                onToggleLanguagePicker={() => setLanguagePickerVisible(true)}
+                onToggleMute={handleToggleMute}
+                onShare={handleShareFact}
+              />
             </View>
           </ImageBackground>
         </Animated.View>
       </PanGestureHandler>
 
-      <Modal
-        transparent={true}
-        visible={isLanguagePickerVisible}
-        animationType="fade"
-        onRequestClose={() => setLanguagePickerVisible(false)}
-      >
-        <Pressable style={styles.modalOverlay} onPress={() => setLanguagePickerVisible(false)}>
-          <View style={styles.languagePickerContainer}>
-            {SUPPORTED_LANGUAGES.map((lang) => (
-              <TouchableOpacity
-                key={lang}
-                style={styles.languageOption}
-                onPress={() => handleSelectLanguage(lang)}
-              >
-                <Text style={styles.languageFlagText}>{LANGUAGE_FLAGS[lang]}</Text>
-                <Text style={styles.languageOptionText}>{lang}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </Pressable>
-      </Modal>
+      <LanguagePickerModal
+        isVisible={isLanguagePickerVisible}
+        onClose={() => setLanguagePickerVisible(false)}
+        onSelectLanguage={handleSelectLanguage}
+        supportedLanguages={SUPPORTED_LANGUAGES}
+        languageFlags={LANGUAGE_FLAGS}
+      />
     </SafeAreaProvider>
   );
 };
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  backgroundImage: { flex: 1, width, height },
-  overlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)' },
-  safeArea: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 },
-  factContainer: {
-  flex: 1,
-  justifyContent: 'center',
-  alignItems: 'center',
-  paddingHorizontal: 30,
-  paddingVertical: 40,
-  // Remove backgroundColor from here
-},
-
-textBackground: {
-  backgroundColor: 'rgba(0, 0, 0, 0.4)', // Semi-transparent background
-  paddingHorizontal: 20,
-  paddingVertical: 15,
-  borderRadius: 12, // Rounded corners for better look
-  // Optional: add some styling
-  shadowColor: '#000',
-  shadowOffset: { width: 0, height: 2 },
-  shadowOpacity: 0.25,
-  shadowRadius: 4,
-  elevation: 5, // For Android shadow
-},
-
-factText: {
-  fontSize: 28,
-  fontWeight: '700',
-  color: 'white',
-  textAlign: 'center',
-  lineHeight: 40,
-  textShadowColor: 'rgba(0, 0, 0, 0.9)',
-  textShadowOffset: { width: 2, height: 2 },
-  textShadowRadius: 6,
-  letterSpacing: 0.3,
-},
-  categoryIndicator: {
-    position: 'absolute',
-    top: 60,
-    right: 20,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
-  categoryText: { color: 'white', fontSize: 13, fontWeight: 'bold', letterSpacing: 1.2 },
-  languageSwitcher: {
-    position: 'absolute',
-    top: 60,
-    left: 20,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    minWidth: 60,
-    alignItems: 'center',
-    zIndex: 10,
-  },
-  languageSwitcherText: {
-    color: 'white',
-    fontSize: 13,
-    fontWeight: 'bold',
-  },
-  hintsContainer: { position: 'absolute', bottom: 100, left: 0, right: 0, alignItems: 'center' },
-  hintText: {
-    color: 'rgba(255, 255, 255, 0.7)',
-    fontSize: 14,
-    fontWeight: '500',
-    marginVertical: 2,
-    textShadowColor: 'rgba(0, 0, 0, 0.7)',
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 2,
-  },
-  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#1a1a2e', paddingHorizontal: 40 },
-  loadingText: { color: 'white', fontSize: 24, fontWeight: '600', textAlign: 'center', marginBottom: 16 },
-  loadingSubtext: { color: 'rgba(255, 255, 255, 0.7)', fontSize: 16, textAlign: 'center' },
-  
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
-  },
-  muteButton: {
-    position: 'absolute',
-    bottom: 40,
-    right: 20,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
-    padding: 12,
-    borderRadius: 30,
-    zIndex: 10,
-  },
-  languagePickerContainer: {
-    position: 'absolute',
-    top: 120, // Adjusted position to be below the new circular button
-    left: 20,
-    backgroundColor: 'rgba(40, 40, 40, 0.95)',
-    borderRadius: 12,
-    paddingVertical: 5,
-    paddingHorizontal: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
-    elevation: 8,
-  },
-  languageOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 10,
-  },
-  languageFlagText: {
-    fontSize: 22,
-    marginRight: 12,
-  },
-  languageOptionText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '500',
-  },
+  backgroundImage: { flex: 1 },
+  overlay: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 });
 
 export default FactSwipeApp;

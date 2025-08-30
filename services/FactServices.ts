@@ -79,14 +79,29 @@ export async function fetchFactsFromApi(
   batchSize: number = 10
 ): Promise<Fact[]> {
   const facts: Fact[] = [];
+  // Use a Set for efficient O(1) lookups to track IDs in the current batch
+  const fetchedFactIds = new Set<string | number>();
+  
+  // Add a safety limit to prevent potential infinite loops
+  const maxAttempts = batchSize * 2; 
+  let attempts = 0;
 
-  for (let i = 0; i < batchSize; i++) {
+  // Use a 'while' loop to ensure we collect enough UNIQUE facts
+  while (facts.length < batchSize && attempts < maxAttempts) {
+    attempts++;
+    
     const chosenCategory = weightedRandomCategory(
       interests,
       categories.map(c => normalizeCategory(c))
     );
+    
     const fact = await fetchFactByCategory(chosenCategory);
-    if (fact) facts.push(fact);
+
+    // Only add the fact if it's valid AND its ID hasn't been seen yet
+    if (fact && !fetchedFactIds.has(fact.id)) {
+      fetchedFactIds.add(fact.id); // Add the new ID to our set
+      facts.push(fact);           // Add the unique fact to our results
+    }
   }
 
   return facts;

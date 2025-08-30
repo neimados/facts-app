@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "FactSwipe",
-    "slug": "factswipe",
+    "name": "SwipNapse",
+    "slug": "swipnapse",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -17,7 +17,7 @@
     ],
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.yourcompany.factswipe",
+      "bundleIdentifier": "com.shell00.swipnapse",
       "buildNumber": "1.0.0",
       "infoPlist": {
         "UIStatusBarHidden": true,
@@ -30,7 +30,7 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#1a1a2e"
       },
-      "package": "com.yourcompany.factswipe",
+      "package": "com.shell00.swipnapse",
       "versionCode": 1,
       "permissions": [
         "INTERNET",
@@ -50,7 +50,9 @@
           "initialOrientation": "PORTRAIT"
         }
       ],
-      "expo-localization"
+      "expo-localization",
+      "expo-video",
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": true

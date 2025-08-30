@@ -1,14 +1,14 @@
-# FactSwipe
+# Swipnapse
 
 **Discover the world’s most fascinating facts with a swipe.**
 
-FactSwipe is a **React Native** mobile app for iOS and Android, delivering bite-sized, engaging facts in a seamless, TikTok-like swiping experience. Powered by **AI-driven data curation, auto-translation, and adaptive learning**, FactSwipe offers a minimalist, immersive experience—no accounts, no ads, just pure knowledge at your fingertips.
+Swipnapse is a **React Native** mobile app for iOS and Android, delivering bite-sized, engaging facts in a seamless, TikTok-like swiping experience. Powered by **AI-driven data curation, auto-translation, and adaptive learning**, Swipnapse offers a minimalist, immersive experience—no accounts, no ads, just pure knowledge at your fingertips.
 
 ---
 
-## 🌟 Why FactSwipe?
+## 🌟 Why Swipnapse?
 
-FactSwipe is built for **speed, simplicity, and personalization**:
+Swipnapse is built for **speed, simplicity, and personalization**:
 - **AI-Powered Fact Curation**: Our backend uses an **n8n workflow** to scrape, analyze, and summarize Wikipedia articles into concise, engaging facts (under 30 words). Each fact is tagged by category and deduplicated using **Wikidata UIDs**.
 - **Auto-Translation**: Facts are **automatically translated** into the user’s preferred language using AI, with the option to switch languages on the fly.
 - **Adaptive Learning**: The app learns from user behavior, adjusting future fact batches based on **time spent per category** to keep content relevant and engaging.
