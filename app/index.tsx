@@ -255,7 +255,7 @@ const FactSwipeApp: React.FC = () => {
 
     try {
       await Share.share({
-        message: `FactSwipe Discovery:\n\n"${translatedSummary}"`, // Use the translated text
+        message: `SwipNapse Discovery:\n\n"${translatedSummary}"`, // Use the translated text
         title: `A fact about ${currentFact.category}`, // Optional: for Android
       });
     } catch (error) {

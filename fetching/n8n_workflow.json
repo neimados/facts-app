@@ -1,0 +1,408 @@
+{
+  "name": "Wiki Facts Extractor",
+  "nodes": [
+    {
+      "parameters": {
+        "values": {
+          "number": [
+            {
+              "name": "articles_to_fetch",
+              "value": 1
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "3bebfd5e-14b9-49b1-95c3-b2a3fa4f047c",
+      "name": "Configuration",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "const count = $input.first().json.articles_to_fetch;\nconst items = [];\nfor (let i = 0; i < count; i++) {\n  items.push({ index: i });\n}\nreturn items;"
+      },
+      "id": "620193e6-10dc-424e-a578-6999545dd898",
+      "name": "Create Loop",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        192,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://en.wikipedia.org/api/rest_v1/page/random/summary",
+        "options": {}
+      },
+      "id": "1aa29616-72e5-4ebc-bc81-1efb7d9755fe",
+      "name": "Get Random Article",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": [
+        368,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "const article = $input.first().json;\n\nif (!article.title || !article.extract) {\n  return [{ json: { skip: true, reason: 'Missing data' } }];\n}\n\nconst extract = article.extract;\nif (extract.length < 100 || extract.length > 2000) {\n  return [{ json: { skip: true, reason: 'Bad length' } }];\n}\n\nconst title = article.title.toLowerCase();\nconst skipWords = ['disambiguation', 'list of', 'category:', 'template:'];\nif (skipWords.some(word => title.includes(word))) {\n  return [{ json: { skip: true, reason: 'Skip pattern' } }];\n}\n\nreturn [{\n  json: {\n    skip: false,\n    title: article.title,\n    extract: extract.substring(0, 1500),\n    wikipedia_url: article.content_urls?.desktop?.page || '',\n    wikidata_id: article.wikibase_item || null\n  }\n}];"
+      },
+      "id": "76928950-1817-4bfd-bb40-358b18e531bb",
+      "name": "Filter Quality",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        544,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.skip}}"
+            }
+          ]
+        }
+      },
+      "id": "ee0d6659-c1ed-427c-8b54-247c3e52297a",
+      "name": "Quality Check",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        720,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "const title = $json.title;\nconst safeTitle = title.replace(/'/g, \"''\");\nconst query = `SELECT COUNT(*) as count FROM knowledge_entries WHERE title = '${safeTitle}'`;\nreturn [{ json: { query: query } }];"
+      },
+      "id": "98abf867-a691-4022-8d16-ead56e055f14",
+      "name": "Prepare SQL",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        912,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{$json.query}}"
+      },
+      "id": "3b8c127b-a37b-4873-a8d2-73cd4d2bc498",
+      "name": "Check Duplicate",
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 1,
+      "position": [
+        1088,
+        0
+      ],
+      "credentials": {
+        "mySql": {
+          "id": "qcT9Bll5SJO4dw19",
+          "name": "MySQL account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{$json.count}}",
+              "operation": "equal"
+            }
+          ]
+        }
+      },
+      "id": "2b1496e1-6edc-4ae8-b727-873b14c2702a",
+      "name": "No Duplicate",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1264,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "chat",
+        "model": "gpt-5-nano",
+        "prompt": {
+          "messages": [
+            {
+              "content": "=Analyze this Wikipedia article and extract one interesting fact that can be summarized in exactly 30 words or less.\n\nTitle: {{ $('Filter Quality').item.json.title }}\nContent: {{ $('Filter Quality').item.json.extract }}\n\nYou MUST respond with valid JSON in this exact format (no line breaks, single line):\n{\"summary\": \"exactly 30 words or less\", \"category\": \"Technology|Science|History|Geography|Arts|Sports|Politics|Medicine|Environment|Other\", \"score\": \"1-10\"}\n\nDo not include any text before or after the JSON. Do not format the JSON with line breaks."
+            }
+          ]
+        },
+        "options": {},
+        "requestOptions": {}
+      },
+      "id": "4ad19a57-5fb8-45bd-a615-4e77f5bc42d2",
+      "name": "AI Process",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [
+        1440,
+        0
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "HgOKfELKBiKWfYLG",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// Final fixed Process AI with correct structure\nconst inputData = $input.first().json;\nconst articleData = $('Filter Quality').first().json;\n\nconsole.log('=== PROCESS AI ===');\n\n// Get AI response content using the correct structure\nlet aiResponse;\nif (inputData.message && inputData.message.content) {\n  aiResponse = inputData.message.content;\n  console.log('✅ AI Response found via message.content');\n} else if (Array.isArray(inputData) && inputData[0] && inputData[0].message && inputData[0].message.content) {\n  aiResponse = inputData[0].message.content;\n  console.log('✅ AI Response found via array[0].message.content');\n} else if (inputData.choices && inputData.choices[0] && inputData.choices[0].message && inputData.choices[0].message.content) {\n  aiResponse = inputData.choices[0].message.content;\n  console.log('✅ AI Response found via choices[0].message.content');\n} else {\n  console.log('❌ No AI response content found');\n  console.log('Available keys:', Object.keys(inputData));\n  return [{ json: { skip: true, reason: 'No AI response content' } }];\n}\n\nconsole.log('Raw AI Response:', aiResponse);\n\n// Clean up the response - remove escaped quotes and extra whitespace\naiResponse = aiResponse.trim();\n\nlet aiData;\ntry {\n  // Parse the JSON response\n  aiData = JSON.parse(aiResponse);\n  console.log('✅ AI Response parsed successfully');\n} catch (error) {\n  console.log('❌ AI parse error:', error.message);\n  console.log('Response that failed:', aiResponse);\n  return [{ json: { skip: true, reason: 'AI parse error: ' + error.message } }];\n}\n\n// Validate required fields\nif (!aiData.summary || !aiData.category) {\n  console.log('❌ Missing required fields');\n  console.log('Available fields:', Object.keys(aiData));\n  console.log('Summary:', aiData.summary);\n  console.log('Category:', aiData.category);\n  return [{ json: { skip: true, reason: 'Missing fields' } }];\n}\n\nconsole.log('✅ Required fields present');\nconsole.log('Summary:', aiData.summary);\nconsole.log('Category:', aiData.category);\n\n// Trim summary to 30 words if needed\nconst words = aiData.summary.split(' ').filter(word => word.length > 0);\nconst wordCount = words.length;\nif (wordCount > 30) {\n  aiData.summary = words.slice(0, 30).join(' ');\n  console.log('⚠️ Summary trimmed from', wordCount, 'to 30 words');\n}\n\n// Validate score\nconst score = parseInt(aiData.score) || 0;\nconsole.log('Interestingness score:', score);\n\nif (score < 5) {\n  console.log('❌ Score too low:', score);\n  return [{ json: { skip: true, reason: 'Low score: ' + score } }];\n}\n\nconsole.log('✅ All checks passed, preparing final data');\n\nconst finalData = {\n  skip: false,\n  title: articleData.title,\n  summary: aiData.summary,\n  category: aiData.category,\n  wikipedia_url: articleData.wikipedia_url,\n  wikidata_id: articleData.wikidata_id,\n  original_extract: articleData.extract.substring(0, 1000),\n  interestingness_score: score,\n  word_count: Math.min(wordCount, 30)\n};\n\nconsole.log('✅ SUCCESS: Final data prepared');\nconsole.log('Skip value:', finalData.skip);\nconsole.log('Title:', finalData.title);\n\nreturn [{ json: finalData }];"
+      },
+      "id": "9f42ce57-9671-4658-ae0c-7ac151317fcb",
+      "name": "Process AI",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1632,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.skip}}"
+            }
+          ]
+        }
+      },
+      "id": "44328f42-6f81-42b1-a57c-37da18bfe4b5",
+      "name": "Final Check",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1808,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "table": "knowledge_entries",
+        "columns": "title,summary,category,wikipedia_url,wikidata_id,original_extract,interestingness_score,word_count",
+        "options": {}
+      },
+      "id": "7ce950ac-fbf9-4db8-bc81-8db4b82eebae",
+      "name": "Save to MySQL",
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 1,
+      "position": [
+        2000,
+        -112
+      ],
+      "credentials": {
+        "mySql": {
+          "id": "qcT9Bll5SJO4dw19",
+          "name": "MySQL account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 2,
+        "unit": "seconds"
+      },
+      "id": "e92de7a6-7337-46e0-a50b-17ce13268d01",
+      "name": "Rate Limit",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [
+        368,
+        192
+      ],
+      "webhookId": "d0ba64ac-d5c4-48d8-8b05-76fb93ad72ff"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        64,
+        -208
+      ],
+      "id": "253eb987-d4ec-486f-8052-c3aa8ef89089",
+      "name": "When clicking ‘Execute workflow’"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Configuration": {
+      "main": [
+        [
+          {
+            "node": "Create Loop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Loop": {
+      "main": [
+        [
+          {
+            "node": "Get Random Article",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Random Article": {
+      "main": [
+        [
+          {
+            "node": "Filter Quality",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Rate Limit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Quality": {
+      "main": [
+        [
+          {
+            "node": "Quality Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Quality Check": {
+      "main": [
+        [
+          {
+            "node": "Prepare SQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare SQL": {
+      "main": [
+        [
+          {
+            "node": "Check Duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Duplicate": {
+      "main": [
+        [
+          {
+            "node": "No Duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "No Duplicate": {
+      "main": [
+        [
+          {
+            "node": "AI Process",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Process": {
+      "main": [
+        [
+          {
+            "node": "Process AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process AI": {
+      "main": [
+        [
+          {
+            "node": "Final Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Final Check": {
+      "main": [
+        [
+          {
+            "node": "Save to MySQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rate Limit": {
+      "main": [
+        [
+          {
+            "node": "Get Random Article",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "3c16dc53-c1b5-4af1-8335-ce6be6b9f26c",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "7d0690e9b4362024c98337a40f716c4b8fdf735591eb9f798ed4e841612d4007"
+  },
+  "id": "t0bJ1kHjYF6NVxGW",
+  "tags": []
+}
