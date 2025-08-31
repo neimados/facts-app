@@ -15,6 +15,8 @@ interface FactCardProps {
   onToggleLanguagePicker: () => void;
   onToggleMute: () => void;
   onShare: () => void;
+  onLike: () => void; 
+  onDislike: () => void; 
 }
 
 export const FactCard = ({
@@ -27,6 +29,8 @@ export const FactCard = ({
   onToggleLanguagePicker,
   onToggleMute,
   onShare,
+  onLike,
+  onDislike, 
 }: FactCardProps) => {
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -41,6 +45,12 @@ export const FactCard = ({
       <View style={styles.bottomControlsContainer}>
         <TouchableOpacity onPress={onShare} style={styles.controlButton}>
           <Ionicons name="share-social" size={24} color="white" />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={onLike} style={styles.controlButton}>
+          <Ionicons name="heart" size={24} color="#4CAF50" />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={onDislike} style={styles.controlButton}>
+          <Ionicons name="thumbs-down-outline" size={24} color="#F44336" />
         </TouchableOpacity>
         <TouchableOpacity onPress={onToggleMute} style={styles.controlButton}>
           <Ionicons name={isMuted ? 'volume-mute' : 'volume-high'} size={24} color="white" />

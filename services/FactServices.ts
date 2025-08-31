@@ -20,8 +20,7 @@ export const ALL_CATEGORIES: string[] = [
   "Sports",
   "Politics",
   "Medicine",
-  "Environment",
-  "Other"
+  "Environment"
 ];
 
 const API_URL = "API URL";
@@ -121,10 +120,25 @@ export async function trackFactInteraction(
 
     const normalized = normalizeCategory(category);
 
-    // Score: time spent (logarithmic) + bonus for like/dislike
-    let score = Math.log(Math.min(timeSpent, 60000) / 1000 + 1);
-    if (action === "like") score += 2;
-    if (action === "dislike") score -= 1;
+    // --- NEW, MORE IMPACTFUL SCORING LOGIC ---
+    let score = 0;
+    
+    // 1. Calculate a more impactful base score from time spent.
+    // This is a linear scale up to 30 seconds, providing a max of 10 points.
+    const timeScore = Math.min(timeSpent / 1000, 30) / 3;
+
+    // 2. Adjust the final score based on the explicit user action.
+    if (action === "like") {
+      // A "like" is a very strong signal. It provides a large flat bonus on top of the time spent.
+      score = 15 + timeScore; 
+    } else if (action === "dislike") {
+      // A "dislike" is a strong negative signal to quickly down-rank a category.
+      score = -10;
+    } else { // This handles the default "view" action.
+      // The score is based purely on how long the user viewed the fact.
+      score = timeScore;
+    }
+    // --- END OF NEW LOGIC ---
 
     interests[normalized] = (interests[normalized] || 0) + score;
 

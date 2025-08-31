@@ -1,4 +1,3 @@
-// app/index.tsx - Main entry point for FactSwipe with updated audio handling
 import * as React from 'react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
@@ -7,16 +6,21 @@ import {
   StyleSheet,
   StatusBar,
   BackHandler,
-  Animated,
   ImageBackground,
   Share,
 } from 'react-native';
-import { PanGestureHandler, State } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  runOnJS,
+} from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Localization from 'expo-localization';
 import { Asset } from 'expo-asset';
-// Replace Expo AV with Expo Audio
 import { useAudioPlayer, AudioSource } from 'expo-audio';
+import * as Haptics from 'expo-haptics';
 
 import {
   fetchFactsFromApi,
@@ -24,16 +28,14 @@ import {
   loadUserInterests,
   UserInterests,
   ALL_CATEGORIES,
-  Fact, // Make sure to export the Fact interface from FactServices
+  Fact,
 } from '../services/FactServices';
 
-// Import your new components
 import { LoadingScreen } from '../components/LoadingScreen';
 import { FactCard } from '../components/FactCard';
 import { LanguagePickerModal } from '../components/LanguagePickerModal';
 
 // --- Translation Service ---
-
 const DEEPL_API_KEY = 'API KEY';
 const DEEPL_API_URL = 'https://api-free.deepl.com/v2/translate';
 const SUPPORTED_LANGUAGES = ['EN', 'ES', 'FR', 'DE', 'ZH'];
@@ -63,16 +65,16 @@ const translateText = async (text: string, targetLang: string): Promise<string |
     return text;
   }
 };
-
 // --- End of Translation Service ---
 
 const { height } = Dimensions.get('window');
 
 function getRandomColor(): string {
-  const r = Math.floor(Math.random() * 256);
-  const g = Math.floor(Math.random() * 256);
-  const b = Math.floor(Math.random() * 256);
-  return `rgba(${r},${g},${b},0.75)`;
+  // 1. Hue: The color itself (0-360). We keep this fully random.
+  const hue = Math.floor(Math.random() * 361);
+  const saturation = Math.floor(70 + Math.random() * 21);
+  const lightness = Math.floor(30 + Math.random() * 16);
+  return `hsla(${hue}, ${saturation}%, ${lightness}%, 0.75)`;
 }
 
 const CATEGORY_BACKGROUNDS = {
@@ -122,16 +124,14 @@ const FactSwipeApp: React.FC = () => {
   const [isLanguagePickerVisible, setLanguagePickerVisible] = useState(false);
   const [isMuted, setIsMuted] = useState<boolean>(false);
 
-  const translateY = useRef(new Animated.Value(0)).current;
+  const translateY = useSharedValue(0);
   const autoAdvanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const viewStartTime = useRef<number>(Date.now());
-  const gestureRef = useRef(null);
 
-  // Replace old Audio.Sound with new useAudioPlayer hook
   const audioSource: AudioSource = require('../assets/sounds/ambiance.mp3');
   const player = useAudioPlayer(audioSource);
 
-  // --- Updated Sound Handling with Expo Audio ---
+  // --- Sound Handling with Expo Audio ---
   useEffect(() => {
     const setupAudio = async () => {
       try {
@@ -143,13 +143,12 @@ const FactSwipeApp: React.FC = () => {
         console.error('Error setting up audio:', error);
       }
     };
-
     setupAudio();
-
     // Cleanup is handled automatically by the hook
   }, [player]);
 
   const handleToggleMute = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); // Add light feedback
     try {
       if (isMuted) {
         player.play();
@@ -249,7 +248,31 @@ const FactSwipeApp: React.FC = () => {
     }
   }, [currentFactIndex, resetAutoAdvanceTimer]);
 
+  const handleLikeFact = useCallback(async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const currentFact = facts[currentFactIndex];
+    if (!currentFact) return;
+
+    const categoryToTrack = isValidCategory(currentFact.category) ? currentFact.category : 'default';
+    // The `timeSpent` is not as relevant for a direct action, so we can pass 0
+    const updated = await trackFactInteraction(currentFact.id, categoryToTrack, 0, "like");
+    if (updated) setUserInterestData(updated);
+    handleNextFact();
+  }, [currentFactIndex, facts, handleNextFact]);
+
+  const handleDislikeFact = useCallback(async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const currentFact = facts[currentFactIndex];
+    if (!currentFact) return;
+
+    const categoryToTrack = isValidCategory(currentFact.category) ? currentFact.category : 'default';
+    const updated = await trackFactInteraction(currentFact.id, categoryToTrack, 0, "dislike");
+    if (updated) setUserInterestData(updated);
+    handleNextFact();
+  }, [currentFactIndex, facts, handleNextFact]);
+
   const handleShareFact = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const currentFact = facts[currentFactIndex];
     if (!currentFact) return;
 
@@ -263,30 +286,37 @@ const FactSwipeApp: React.FC = () => {
     }
   };
 
-  const onGestureEvent = Animated.event(
-    [{ nativeEvent: { translationY: translateY } }],
-    { useNativeDriver: true }
-  );
-
-  const onHandlerStateChange = useCallback((event: any) => {
-    const { nativeEvent } = event;
-    if (nativeEvent.state === State.END) {
-      const { translationY, velocityY } = nativeEvent;
+  const panGesture = Gesture.Pan()
+    .onChange((event) => {
+      translateY.value = event.translationY;
+    })
+    .onFinalize((event) => {
       const swipeThreshold = 80;
       const velocityThreshold = 800;
-      if (translationY < -swipeThreshold || velocityY < -velocityThreshold) {
-        handleNextFact();
-      } else if (translationY > swipeThreshold || velocityY > velocityThreshold) {
-        handlePreviousFact();
-      }
-      Animated.spring(translateY, {
-        toValue: 0,
-        tension: 100,
-        friction: 8,
-        useNativeDriver: true,
-      }).start();
-    }
-  }, [handleNextFact, handlePreviousFact, translateY]);
+      
+      if (event.translationY < -swipeThreshold || event.velocityY < -velocityThreshold) {
+        // Swipe up - next fact
+        runOnJS(handleNextFact)();
+      } else if (event.translationY > swipeThreshold || event.velocityY > velocityThreshold) {
+        // Swipe down - previous fact
+        runOnJS(handlePreviousFact)();
+      }     
+      // Reset the animation
+      translateY.value = withSpring(0, {
+        damping: 15,
+        stiffness: 150,
+      });
+    });
+
+  const animatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [
+        {
+          translateY: translateY.value * 0.3, // Damping factor for smoother movement
+        },
+      ],
+    };
+  });
 
   useEffect(() => {
     resetAutoAdvanceTimer();
@@ -328,26 +358,8 @@ const FactSwipeApp: React.FC = () => {
   return (
     <SafeAreaProvider>
       <StatusBar hidden />
-      <PanGestureHandler
-        ref={gestureRef}
-        onGestureEvent={onGestureEvent}
-        onHandlerStateChange={onHandlerStateChange}
-        activeOffsetY={[-10, 10]}
-      >
-        <Animated.View 
-          style={[
-            styles.container,
-            {
-              transform: [{ 
-                translateY: translateY.interpolate({
-                  inputRange: [-height, 0, height],
-                  outputRange: [-height * 0.3, 0, height * 0.3],
-                  extrapolate: 'clamp',
-                })
-              }]
-            }
-          ]}
-        >
+      <GestureDetector gesture={panGesture}>
+        <Animated.View style={[styles.container, animatedStyle]}>
           <ImageBackground
             source={backgroundImageSource}
             style={styles.backgroundImage}
@@ -364,11 +376,13 @@ const FactSwipeApp: React.FC = () => {
                 onToggleLanguagePicker={() => setLanguagePickerVisible(true)}
                 onToggleMute={handleToggleMute}
                 onShare={handleShareFact}
+                onLike={handleLikeFact}
+                onDislike={handleDislikeFact}
               />
             </View>
           </ImageBackground>
         </Animated.View>
-      </PanGestureHandler>
+      </GestureDetector>
 
       <LanguagePickerModal
         isVisible={isLanguagePickerVisible}
