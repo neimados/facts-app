@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Dimensions,
@@ -9,7 +9,7 @@ import {
   ImageBackground,
   Share,
 } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -123,6 +123,9 @@ const FactSwipeApp: React.FC = () => {
   const [isTranslating, setIsTranslating] = useState<boolean>(false);
   const [isLanguagePickerVisible, setLanguagePickerVisible] = useState(false);
   const [isMuted, setIsMuted] = useState<boolean>(false);
+  
+  // New state for gesture management
+  const [canUseGestures, setCanUseGestures] = useState(true);
 
   const translateY = useSharedValue(0);
   const autoAdvanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -219,7 +222,22 @@ const FactSwipeApp: React.FC = () => {
     })();
   }, []);
 
+  // Disable gestures when modal is visible or after recent gesture
+  useEffect(() => {
+    if (isLanguagePickerVisible) {
+      setCanUseGestures(false);
+    } else {
+      // Re-enable gestures after a delay when modal closes
+      const timer = setTimeout(() => {
+        setCanUseGestures(true);
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [isLanguagePickerVisible]);
+
   const handleNextFact = useCallback(async () => {
+    setCanUseGestures(false);
+    
     const currentFact = facts[currentFactIndex];
     const timeSpent = Date.now() - viewStartTime.current;
     if (currentFact && timeSpent > 1000) {
@@ -238,14 +256,25 @@ const FactSwipeApp: React.FC = () => {
     }
     viewStartTime.current = Date.now();
     resetAutoAdvanceTimer();
+    
+    // Re-enable gestures after animation completes
+    setTimeout(() => {
+      setCanUseGestures(true);
+    }, 500);
   }, [currentFactIndex, facts, userInterestData, resetAutoAdvanceTimer]);
 
   const handlePreviousFact = useCallback(() => {
+    setCanUseGestures(false);
+    
     if (currentFactIndex > 0) {
       setCurrentFactIndex(currentFactIndex - 1);
       viewStartTime.current = Date.now();
       resetAutoAdvanceTimer();
     }
+    
+    setTimeout(() => {
+      setCanUseGestures(true);
+    }, 500);
   }, [currentFactIndex, resetAutoAdvanceTimer]);
 
   const handleLikeFact = useCallback(async () => {
@@ -286,27 +315,36 @@ const FactSwipeApp: React.FC = () => {
     }
   };
 
-  const panGesture = Gesture.Pan()
-    .onChange((event) => {
-      translateY.value = event.translationY;
-    })
-    .onFinalize((event) => {
-      const swipeThreshold = 80;
-      const velocityThreshold = 800;
-      
-      if (event.translationY < -swipeThreshold || event.velocityY < -velocityThreshold) {
-        // Swipe up - next fact
-        runOnJS(handleNextFact)();
-      } else if (event.translationY > swipeThreshold || event.velocityY > velocityThreshold) {
-        // Swipe down - previous fact
-        runOnJS(handlePreviousFact)();
-      }     
-      // Reset the animation
-      translateY.value = withSpring(0, {
-        damping: 15,
-        stiffness: 150,
+  // Create a simple pan gesture
+  const simplePanGesture = useMemo(() => {
+    return Gesture.Pan()
+      .enabled(canUseGestures)
+      .minDistance(10)
+      .failOffsetX([-50, 50])
+      .maxPointers(1)
+      .onChange((event) => {
+        if (canUseGestures) {
+          translateY.value = event.translationY;
+        }
+      })
+      .onFinalize((event) => {
+        if (!canUseGestures) return;
+        
+        const swipeThreshold = 80;
+        const velocityThreshold = 800;
+        
+        if (event.translationY < -swipeThreshold || event.velocityY < -velocityThreshold) {
+          runOnJS(handleNextFact)();
+        } else if (event.translationY > swipeThreshold || event.velocityY > velocityThreshold) {
+          runOnJS(handlePreviousFact)();
+        }
+        
+        translateY.value = withSpring(0, {
+          damping: 15,
+          stiffness: 150,
+        });
       });
-    });
+  }, [canUseGestures, handleNextFact, handlePreviousFact, translateY]);
 
   const animatedStyle = useAnimatedStyle(() => {
     return {
@@ -355,43 +393,56 @@ const FactSwipeApp: React.FC = () => {
   const categoryKey = isValidCategory(currentFact.category) ? currentFact.category : 'default';
   const backgroundImageSource = CATEGORY_BACKGROUNDS[categoryKey];
 
+  // Render card content
+  const cardContent = (
+    <Animated.View style={[styles.cardContainer, animatedStyle]}>
+      <FactCard
+        fact={currentFact}
+        translatedSummary={translatedSummary}
+        isTranslating={isTranslating}
+        language={language}
+        isMuted={isMuted}
+        showHints={currentFactIndex < 3}
+        onToggleLanguagePicker={() => setLanguagePickerVisible(true)}
+        onToggleMute={handleToggleMute}
+        onShare={handleShareFact}
+        onLike={handleLikeFact}
+        onDislike={handleDislikeFact}
+      />
+    </Animated.View>
+  );
+
   return (
-    <SafeAreaProvider>
-      <StatusBar hidden />
-      <GestureDetector gesture={panGesture}>
-        <Animated.View style={[styles.container, animatedStyle]}>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <StatusBar hidden />
+        <View style={styles.container}>
           <ImageBackground
             source={backgroundImageSource}
             style={styles.backgroundImage}
             resizeMode="cover"
           >
             <View style={[styles.overlay, { backgroundColor: currentColorOverlay }]}>
-              <FactCard
-                fact={currentFact}
-                translatedSummary={translatedSummary}
-                isTranslating={isTranslating}
-                language={language}
-                isMuted={isMuted}
-                showHints={currentFactIndex < 3}
-                onToggleLanguagePicker={() => setLanguagePickerVisible(true)}
-                onToggleMute={handleToggleMute}
-                onShare={handleShareFact}
-                onLike={handleLikeFact}
-                onDislike={handleDislikeFact}
-              />
+              {canUseGestures && !isLanguagePickerVisible ? (
+                <GestureDetector gesture={simplePanGesture}>
+                  {cardContent}
+                </GestureDetector>
+              ) : (
+                cardContent
+              )}
             </View>
           </ImageBackground>
-        </Animated.View>
-      </GestureDetector>
+        </View>
 
-      <LanguagePickerModal
-        isVisible={isLanguagePickerVisible}
-        onClose={() => setLanguagePickerVisible(false)}
-        onSelectLanguage={handleSelectLanguage}
-        supportedLanguages={SUPPORTED_LANGUAGES}
-        languageFlags={LANGUAGE_FLAGS}
-      />
-    </SafeAreaProvider>
+        <LanguagePickerModal
+          isVisible={isLanguagePickerVisible}
+          onClose={() => setLanguagePickerVisible(false)}
+          onSelectLanguage={handleSelectLanguage}
+          supportedLanguages={SUPPORTED_LANGUAGES}
+          languageFlags={LANGUAGE_FLAGS}
+        />
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 };
 
@@ -399,6 +450,12 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   backgroundImage: { flex: 1 },
   overlay: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  cardContainer: { 
+    width: '100%', 
+    height: '100%', 
+    justifyContent: 'center', 
+    alignItems: 'center' 
+  },
 });
 
 export default FactSwipeApp;
