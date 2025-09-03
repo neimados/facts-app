@@ -17,7 +17,7 @@
     ],
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.shell00.swipnapse",
+      "bundleIdentifier": "com.neimados42.swipnapse",
       "buildNumber": "1.0.0",
       "infoPlist": {
         "UIStatusBarHidden": true,
@@ -30,7 +30,7 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#1a1a2e"
       },
-      "package": "com.shell00.swipnapse",
+      "package": "com.neimados42.swipnapse",
       "versionCode": 1,
       "permissions": [
         "INTERNET",

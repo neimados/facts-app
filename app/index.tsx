@@ -74,7 +74,7 @@ function getRandomColor(): string {
   const hue = Math.floor(Math.random() * 361);
   const saturation = Math.floor(70 + Math.random() * 21);
   const lightness = Math.floor(30 + Math.random() * 16);
-  return `hsla(${hue}, ${saturation}%, ${lightness}%, 0.75)`;
+  return `hsla(${hue}, ${saturation}%, ${lightness}%, 0.35)`;
 }
 
 const CATEGORY_BACKGROUNDS = {
