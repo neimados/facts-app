@@ -25,27 +25,35 @@ export const ALL_CATEGORIES: string[] = [
 
 const API_URL = "API URL";
 
-// --- Helpers ---
 function normalizeCategory(category: string): string {
   return category.toLowerCase();
 }
 
 function weightedRandomCategory(interests: UserInterests, categories: string[]): string {
+  const EXPLORATION_WEIGHT = 5; // Adjust this value to control randomness. Higher = more exploration.
+
   if (Object.keys(interests).length === 0) {
     return categories[Math.floor(Math.random() * categories.length)];
   }
 
-  const totalWeight = Object.values(interests).reduce((a, b) => a + b, 0);
+  const weightedCategories = categories.map(category => {
+    // Get the user's score for the category, default to 0 if not present.
+    const userScore = interests[category] || 0;
+    const weight = Math.max(1, userScore + EXPLORATION_WEIGHT);
+    
+    return { category, weight };
+  });
+
+  const totalWeight = weightedCategories.reduce((sum, item) => sum + item.weight, 0);
   const r = Math.random() * totalWeight;
 
   let cumulative = 0;
-  for (const category of categories) {
-    cumulative += interests[category] || 0;
+  for (const item of weightedCategories) {
+    cumulative += item.weight;
     if (r <= cumulative) {
-      return category;
+      return item.category;
     }
   }
-
   return categories[Math.floor(Math.random() * categories.length)];
 }
 
@@ -110,7 +118,7 @@ export async function fetchFactsFromApi(
 export async function trackFactInteraction(
   factId: string | number,
   category: string,
-  timeSpent: number,
+  timeSpent: number, // in milliseconds
   action: "view" | "like" | "dislike" = "view"
 ) {
   try {
@@ -119,28 +127,27 @@ export async function trackFactInteraction(
     let interests: UserInterests = stored ? JSON.parse(stored) : {};
 
     const normalized = normalizeCategory(category);
-
-    // --- NEW, MORE IMPACTFUL SCORING LOGIC ---
-    let score = 0;
+    const currentScore = interests[normalized] || 0;
     
-    // 1. Calculate a more impactful base score from time spent.
-    // This is a linear scale up to 30 seconds, providing a max of 10 points.
+    let scoreChange = 0;
+
+    // 1. Calculate a base score from time spent.
+    // Max of 10 points for viewing up to 30 seconds.
     const timeScore = Math.min(timeSpent / 1000, 30) / 3;
 
     // 2. Adjust the final score based on the explicit user action.
     if (action === "like") {
-      // A "like" is a very strong signal. It provides a large flat bonus on top of the time spent.
-      score = 15 + timeScore; 
+      scoreChange = 15;
     } else if (action === "dislike") {
-      // A "dislike" is a strong negative signal to quickly down-rank a category.
-      score = -10;
-    } else { // This handles the default "view" action.
-      // The score is based purely on how long the user viewed the fact.
-      score = timeScore;
+      scoreChange = -20;
+    } else { // "view" action
+      scoreChange = timeSpent > 1000 ? 0.5 + timeScore : timeScore;
     }
-    // --- END OF NEW LOGIC ---
+    
+    // 3. Calculate the new score and apply caps.
+    const newScore = Math.max(-50, currentScore + scoreChange);
 
-    interests[normalized] = (interests[normalized] || 0) + score;
+    interests[normalized] = newScore;
 
     await AsyncStorage.setItem(key, JSON.stringify(interests));
     return interests;
