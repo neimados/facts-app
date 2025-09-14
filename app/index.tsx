@@ -131,7 +131,7 @@ const FactSwipeApp: React.FC = () => {
   const autoAdvanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const viewStartTime = useRef<number>(Date.now());
 
-  const audioSource: AudioSource = require('../assets/sounds/ambiance.mp3');
+  const audioSource = Asset.fromModule(require('../assets/sounds/ambiance.mp3')).uri;
   const player = useAudioPlayer(audioSource);
 
   // --- Sound Handling with Expo Audio ---
@@ -169,7 +169,8 @@ const FactSwipeApp: React.FC = () => {
   useEffect(() => {
     const preloadAssets = async () => {
       const imageUrls = Object.values(CATEGORY_BACKGROUNDS);
-      await Asset.loadAsync(imageUrls);
+      const audioAsset = require('../assets/sounds/ambiance.mp3');
+      await Asset.loadAsync([...imageUrls, audioAsset]); 
       setAreImagesPreloaded(true);
     };
     preloadAssets();
